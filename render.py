@@ -23,7 +23,7 @@ import generate_audio as ga
 # ------------------------------------------------------------------ ayarlar
 
 WIDTH, HEIGHT = 1920, 1080
-FPS = 30
+FPS = 24
 MOTION_LOOP_SEC = 60          # render edilen tek segment
 AUDIO_LOOP_SEC = 600          # uretilen ses dongusu (10 dk)
 
@@ -83,39 +83,29 @@ def run(cmd):
     return r
 
 
-def fetch_image(prompt, out_path, seed):
-    """Pollinations.ai - ucretsiz, API anahtari gerektirmez."""
-    q = urllib.parse.quote(prompt)
-    url = (f"https://image.pollinations.ai/prompt/{q}"
-           f"?width=1920&height=1080&seed={seed}&nologo=true&model=flux")
-    print(f"Gorsel isteniyor: {prompt[:60]}...")
-    for attempt in range(3):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=180) as r:
-                data = r.read()
-            if len(data) > 20000:
-                Path(out_path).write_bytes(data)
-                print(f"Gorsel indi: {len(data)//1024} KB")
-                return True
-        except Exception as e:
-            print(f"  deneme {attempt+1} basarisiz: {e}")
-    return False
+def build_background(out_path, seed, purpose):
+    """
+    Kapak gorseli: kod ile uretilen simetrik cekici deseni.
+    Dis API yok -> her zaman calisir, telif sorunu yok, sinirsiz cesit.
+    """
+    import artgen
+    # amaca gore palet egilimi (uyku daha soguk, odak daha canli)
+    prefer = {
+        "sleep":      ["orchid", "nebula", "aurora"],
+        "meditation": ["aurora", "reef", "orchid"],
+        "relax":      ["reef", "aurora", "prism"],
+        "focus":      ["prism", "spectra", "reef"],
+        "study":      ["spectra", "prism", "nebula"],
+    }.get(purpose, list(artgen.PALETTES))
 
+    rng = random.Random(seed)
+    palette = rng.choice(prefer)
+    sym = rng.choice(["mirror", "mirror", "quad"])
 
-def fallback_image(out_path, seed):
-    """Gorsel gelmezse: sentetik gradyan (video asla bos kalmasin)."""
-    import numpy as np
-    from PIL import Image
-    rng = np.random.default_rng(seed)
-    W, H = 2560, 1440
-    top = rng.integers(8, 45, 3)
-    bot = rng.integers(30, 95, 3)
-    y = np.linspace(0, 1, H)[:, None] * np.ones((1, W))
-    img = np.dstack([top[i] + (bot[i] - top[i]) * y for i in range(3)])
-    img = img.clip(0, 255).astype("uint8")
-    Image.fromarray(img).save(out_path)
-    print("Yedek gradyan gorsel uretildi")
+    img, meta = artgen.generate(seed, 2560, 1440, palette=palette, symmetry=sym)
+    img.save(out_path)
+    print(f"Gorsel uretildi: {meta}")
+    return meta
 
 
 def build_titles(meta, total_sec=3600):
@@ -188,24 +178,27 @@ def main():
     # 2) gorsel
     print("== 2/5  gorsel hazirlaniyor")
     img = out / "bg.png"
-    prompt = random.Random(seed).choice(SCENE_PROMPTS[meta["purpose"]])
-    if not fetch_image(prompt, img, seed):
-        fallback_image(img, seed)
+    art_meta = build_background(img, seed, meta["purpose"])
 
     # 3) hareket dongusu (tek segment, kusursuz doner)
     print("== 3/5  hareket dongusu render ediliyor")
     frames = MOTION_LOOP_SEC * FPS
     motion = out / "motion.mp4"
-    # cos tabanli zoom: basta ve sonda ayni degerde -> dikissiz doner
-    zexpr = f"1.0+0.06*(0.5-0.5*cos(2*PI*on/{frames}))"
+    # cos tabanli zoom: basta ve sonda ayni deger -> dikissiz doner
+    zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
+    # renk kaymasi da tam bir tur atsin -> dongude renk atlamasi olmaz
+    huexpr = f"26*sin(2*PI*t/{MOTION_LOOP_SEC})"
     run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC), "-i", str(img),
-        "-vf", (f"scale=2560:-2,zoompan=z='{zexpr}':d=1:"
+        "-vf", (f"scale=2560:-2,"
+                f"zoompan=z='{zexpr}':d=1:"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"s={WIDTH}x{HEIGHT}:fps={FPS},format=yuv420p"),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
-        "-g", str(FPS * 2), "-an", str(motion),
+                f"s={WIDTH}x{HEIGHT}:fps={FPS},"
+                f"hue=h='{huexpr}':s=1.05,"
+                f"format=yuv420p"),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "29",
+        "-g", str(FPS * 4), "-an", str(motion),
     ])
 
     # 4) sesi hedef sureye uzat + encode
@@ -213,10 +206,16 @@ def main():
     total_sec = int(a.hours * 3600)
     audio_reps = max(1, -(-total_sec // AUDIO_LOOP_SEC)) - 1
     m4a = out / "audio.m4a"
+    # yumusak acilis/kapanis TAM sureye bir kez uygulanir
+    # (dongunun icine konursa her tekrarda kesinti olusur)
+    fade_in = 6
+    fade_out = 8
     run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-stream_loop", str(audio_reps), "-i", str(wav),
         "-t", str(total_sec),
+        "-af", (f"afade=t=in:st=0:d={fade_in},"
+                f"afade=t=out:st={max(0, total_sec - fade_out)}:d={fade_out}"),
         "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(m4a),
     ])
 
@@ -236,7 +235,7 @@ def main():
     # metadata
     title, desc, tags = build_titles(meta, total_sec)
     meta.update({"title": title, "description": desc, "tags": tags,
-                 "prompt": prompt, "duration_sec": total_sec,
+                 "art": art_meta, "duration_sec": total_sec,
                  "video": str(final), "thumbnail_source": str(img)})
     (out / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
 
