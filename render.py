@@ -189,16 +189,22 @@ def main():
     plan = sch.plan_for(hz)
     print(f"Frekans: {sch.format_hz(hz)} Hz  ({plan['mode']} modu)")
 
-    stereo, meta = ga.build(
+    import mixer
+    _rng = __import__("numpy").random.default_rng(seed)
+    purpose = a.purpose or str(_rng.choice(["sleep","meditation","relax","focus","study"]))
+    category = a.texture if a.texture else mixer.choose_category(purpose, _rng)
+
+    stereo, meta = mixer.build_mix(
         AUDIO_LOOP_SEC,
         carrier=plan["carrier"],
-        purpose=a.purpose,
-        texture=a.texture or "none",
-        seed=seed,
         beat=plan["beat"],
         label_hz=plan["label_hz"],
+        purpose=purpose,
+        category=category,
+        seed=seed,
     )
     meta["mode"] = plan["mode"]
+    print(f"Miks: {meta.get('mix')}  kayit: {meta.get('recording','-')}")
     wav = out / "loop.wav"
     ga.write_wav(stereo, wav)
     del stereo
@@ -265,18 +271,7 @@ def main():
     print("== 4/5  ses hedef sureye uzatiliyor")
     audio_reps = max(1, -(-total_sec // AUDIO_LOOP_SEC)) - 1
     m4a = out / "audio.m4a"
-    # yumusak acilis/kapanis TAM sureye bir kez uygulanir
-    # (dongunun icine konursa her tekrarda kesinti olusur)
-    fade_in = 6
-    fade_out = 8
-    run([
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-stream_loop", str(audio_reps), "-i", str(wav),
-        "-t", str(total_sec),
-        "-af", (f"afade=t=in:st=0:d={fade_in},"
-                f"afade=t=out:st={max(0, total_sec - fade_out)}:d={fade_out}"),
-        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(m4a),
-    ])
+    mixer.encode_with_loudnorm(wav, m4a, total_sec, audio_reps)
 
     # 5) birlestir (-c copy => yeniden kodlama yok, saniyeler surer)
     print("== 5/5  video birlestiriliyor")
