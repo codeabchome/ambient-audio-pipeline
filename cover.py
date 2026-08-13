@@ -106,7 +106,7 @@ def _scrim(img, strength=0.55):
     return Image.composite(dark, img, Image.fromarray(mask, "L"))
 
 
-def add_text(img, hz, purpose_label, texture_label, duration_label,
+def add_text(img, hz, name_label, benefit_label, duration_label,
              purpose="sleep", channel="TONEBED"):
     """
     Kapak yazisini yerlestir.
@@ -148,7 +148,7 @@ def add_text(img, hz, purpose_label, texture_label, duration_label,
     y += 72 * s
 
     # frekans - ana odak
-    hz_text = f"{hz}Hz"
+    hz_text = f"{hz} Hz"
     wid = d.textlength(hz_text, font=f_hz)
     d.text((cx - wid / 2, y), hz_text, font=f_hz, fill=white)
     y += 282 * s
@@ -159,14 +159,20 @@ def add_text(img, hz, purpose_label, texture_label, duration_label,
     y += 30 * s
 
     # amac
-    _tracked(d, (0, y), purpose_label.upper(), f_purpose, soft,
-             tracking=8 * s, anchor_center_x=cx)
+    # frekans adi - uzunluga gore kucult
+    nm = name_label.upper()
+    fp = f_purpose
+    while _tracked_width(d, nm, fp, 8 * s) > W * 0.86 and fp.size > int(40 * s):
+        fp = _load(sub_f, fp.size - 4)
+    _tracked(d, (0, y), nm, fp, soft, tracking=8 * s, anchor_center_x=cx)
     y += 108 * s
 
-    # detay satiri
-    detail = f"{texture_label}  ·  {duration_label}"
-    _tracked(d, (0, y), detail, f_detail, dim,
-             tracking=4 * s, anchor_center_x=cx)
+    # fayda + sure
+    detail = f"{benefit_label}  ·  {duration_label}"
+    fd = f_detail
+    while _tracked_width(d, detail, fd, 4 * s) > W * 0.88 and fd.size > int(26 * s):
+        fd = _load(sub_f, fd.size - 3)
+    _tracked(d, (0, y), detail, fd, dim, tracking=4 * s, anchor_center_x=cx)
 
     # yumusak parlama - yazi desenden ayrilsin
     glow = layer.filter(ImageFilter.GaussianBlur(radius=max(2, int(9 * s))))

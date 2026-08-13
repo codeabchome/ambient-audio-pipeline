@@ -113,14 +113,15 @@ def build_background(out_path, seed, purpose):
 
 
 def build_titles(meta, total_sec=3600):
-    """SEO basligi + aciklama + etiketler."""
-    hz = meta["carrier_hz"]
-    purpose = meta["purpose"]
-    tex = meta["texture"]
-    beat = meta["beat_hz"]
+    """
+    Tur konvansiyonuna uygun baslik:
+        "528 Hz The Miracle Tone | DNA Repair & Transformation | 1 Hour"
+    """
+    import schedule as sch
 
-    p_label = PURPOSE_LABEL[purpose]
-    t_label = TEXTURE_LABEL[tex]
+    hz = meta["carrier_hz"]
+    name, benefit = sch.name_for(hz)
+    hz_txt = sch.format_hz(hz)
 
     hours = total_sec / 3600
     if hours >= 1:
@@ -129,81 +130,35 @@ def build_titles(meta, total_sec=3600):
     else:
         dur = f"{int(round(total_sec/60))} Minutes"
 
-    if tex == "none":
-        title = f"{hz}Hz {p_label} | Binaural Beats | {dur}"
+    title = f"{hz_txt} Hz {name} | {benefit} | {dur}"
+
+    mode = meta.get("mode", "tone")
+    if mode == "beat":
+        how = (f"A {hz_txt} Hz binaural beat. Two close tones are played, one in "
+               f"each ear, and the brain perceives the {hz_txt} Hz difference "
+               f"between them. Frequencies this low cannot be heard directly, "
+               f"so headphones are essential.")
     else:
-        title = f"{hz}Hz {p_label} with {t_label} | {dur}"
+        how = (f"A {hz_txt} Hz tone with a {meta['beat_hz']} Hz binaural beat "
+               f"beneath it, on a soft ambient bed. Headphones are recommended.")
 
     desc = (
-        f"{hz}Hz tone with a {beat}Hz binaural beat, layered with "
-        f"{t_label.lower()}. {dur} of continuous, seamlessly looping ambience "
-        f"for {purpose}.\n\n"
-        f"Headphones are recommended for the binaural effect.\n\n"
-        f"Carrier: {hz}Hz ({meta['carrier_meaning']})\n"
-        f"Binaural beat: {beat}Hz\n"
-        f"Texture: {t_label}\n\n"
+        f"{hz_txt} Hz — {name}.\n{benefit}.\n\n"
+        f"{how}\n\n"
+        f"{dur} of continuous, seamlessly looping sound. Play it while you sleep, "
+        f"meditate, read or rest.\n\n"
         f"All audio is original and synthesised for this channel.\n\n"
-        f"This is ambience for rest and focus, not medical advice or treatment."
+        f"Sound is not a treatment. If something hurts or worries you, "
+        f"please speak to a doctor."
     )
 
     tags = [
-        f"{hz}hz", f"{hz} hz", "binaural beats", p_label.lower(),
+        f"{hz_txt}hz", f"{hz_txt} hz", f"{hz_txt}hz frequency",
+        name.lower(), "healing frequency", "binaural beats",
         "sleep music", "meditation music", "relaxing music",
-        "study music", "focus music", "ambient", "1 hour",
-        t_label.lower(), "healing frequency", "solfeggio",
+        "sound healing", "solfeggio", "ambient", "study music", "calm",
     ]
     return title, desc, tags[:15]
-
-
-def render_pomodoro(bg_path, out_path, total_sec, work_min=25, break_min=5):
-    """
-    Pomodoro sayaci: 25 dk calisma / 5 dk mola dongusu.
-    Sayac her saniye degistigi icin dongu numarasi kullanilamaz,
-    tum sure render edilir. Arka plan yumusatilir:
-      - dosya 14 kat kuculur (detayli desen sikismiyor)
-      - sayac cok daha okunakli olur
-    """
-    from PIL import Image, ImageFilter, ImageEnhance
-
-    soft = out_path.parent / "pomo_bg.png"
-    im = Image.open(bg_path).convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
-    im = im.filter(ImageFilter.GaussianBlur(18))
-    im = ImageEnhance.Brightness(im).enhance(0.55)
-    im.save(soft)
-
-    cycle = (work_min + break_min) * 60
-    work_s = work_min * 60
-
-    font = None
-    for c in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-              "fonts/JosefinSans.ttf"):
-        if Path(c).exists():
-            font = c
-            break
-
-    # kalan sure: calisma icindeyse work_s'den, molada ise cycle'dan geri sayar
-    rem = f"if(lt(mod(t\\,{cycle})\\,{work_s}), {work_s}-mod(t\\,{cycle}), {cycle}-mod(t\\,{cycle}))"
-    mm = f"%{{eif\\:floor(({rem})/60)\\:d\\:2}}"
-    ss = f"%{{eif\\:mod(floor({rem})\\,60)\\:d\\:2}}"
-    label = f"%{{eif\\:1\\:d\\:1}}"
-
-    draw = (f"drawtext=fontfile={font}:text='{mm}\\:{ss}':"
-            f"fontsize=220:fontcolor=white:"
-            f"shadowcolor=black@0.7:shadowx=4:shadowy=4:"
-            f"x=(w-tw)/2:y=(h-th)/2-30")
-    # calisma/mola etiketi
-    phase = (f"drawtext=fontfile={font}:"
-             f"text='%{{expr_int_format\\:1\\:d\\:1}}':fontsize=1:fontcolor=black@0")
-
-    run([
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-loop", "1", "-framerate", "6", "-t", str(total_sec), "-i", str(soft),
-        "-vf", f"{draw},format=yuv420p",
-        "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage",
-        "-crf", "30", "-g", "24", "-an", str(out_path),
-    ])
-    soft.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------ ana akis
@@ -212,20 +167,38 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--outdir", default="out")
     ap.add_argument("--hours", type=float, default=1.0)
-    ap.add_argument("--carrier", type=int, default=None)
+    ap.add_argument("--carrier", type=float, default=None)
     ap.add_argument("--purpose", default=None)
     ap.add_argument("--texture", default=None)
     ap.add_argument("--seed", type=int, default=None)
-    ap.add_argument("--pomodoro", action="store_true", help="sayacli calisma videosu")
     a = ap.parse_args()
 
     seed = a.seed if a.seed is not None else random.randrange(1, 10**9)
     out = Path(a.outdir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # 1) ses
+    # 1) ses  -- frekans plandan sirayla gelir
     print("== 1/5  ses uretiliyor")
-    stereo, meta = ga.build(AUDIO_LOOP_SEC, a.carrier, a.purpose, a.texture, seed)
+    import schedule as sch
+
+    if a.carrier:
+        hz = float(a.carrier)
+    else:
+        hz = sch.next_frequency(advance=True)
+
+    plan = sch.plan_for(hz)
+    print(f"Frekans: {sch.format_hz(hz)} Hz  ({plan['mode']} modu)")
+
+    stereo, meta = ga.build(
+        AUDIO_LOOP_SEC,
+        carrier=plan["carrier"],
+        purpose=a.purpose,
+        texture=a.texture or "none",
+        seed=seed,
+        beat=plan["beat"],
+        label_hz=plan["label_hz"],
+    )
+    meta["mode"] = plan["mode"]
     wav = out / "loop.wav"
     ga.write_wav(stereo, wav)
     del stereo
@@ -235,7 +208,7 @@ def main():
     print("== 2/5  gorsel hazirlaniyor")
     raw = out / "art.png"
     img = out / "bg.png"
-    art_meta = build_background(raw, seed, meta["purpose"])
+    art_meta = build_background(raw, int(hz * 1000) + seed % 1000, meta["purpose"])
 
     import cover
     total_sec_tmp = int(a.hours * 3600)
@@ -243,11 +216,12 @@ def main():
     dur_lbl = (f"{int(round(hrs))} Hour" if abs(hrs - 1) < 0.01 else
                (f"{int(round(hrs))} Hours" if hrs >= 1 else
                 f"{int(round(total_sec_tmp/60))} Minutes"))
+    fname, fbenefit = sch.name_for(meta["carrier_hz"])
     cover_img = cover.add_text(
         Image.open(raw),
-        meta["carrier_hz"],
-        PURPOSE_LABEL[meta["purpose"]],
-        TEXTURE_LABEL[meta["texture"]],
+        sch.format_hz(meta["carrier_hz"]),
+        fname,
+        fbenefit,
         dur_lbl,
         purpose=meta["purpose"],
         channel="TONEBED",
@@ -266,14 +240,9 @@ def main():
 
     total_sec = int(a.hours * 3600)
 
-    # 3) gorsel katman
-    if a.pomodoro:
-        print("== 3/5  pomodoro sayaci render ediliyor")
-        motion = out / "motion.mp4"
-        render_pomodoro(img, motion, total_sec)
-        video_reps = 0
-    else:
-        print("== 3/5  hareket dongusu render ediliyor")
+    # 3) hareket dongusu
+    print("== 3/5  hareket dongusu render ediliyor")
+    if True:
         frames = MOTION_LOOP_SEC * FPS
         motion = out / "motion.mp4"
         zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
@@ -323,18 +292,6 @@ def main():
 
     # metadata
     title, desc, tags = build_titles(meta, total_sec)
-    if a.pomodoro:
-        dur = title.split("|")[-1].strip()
-        title = f"Pomodoro Timer 25/5 | {TEXTURE_LABEL[meta['texture']]} | {dur}"
-        desc = ("25 minute focus sessions with 5 minute breaks, on a continuous "
-                f"loop with {TEXTURE_LABEL[meta['texture']].lower()} and a "
-                f"{meta['carrier_hz']}Hz ambient bed.\n\n"
-                "The on-screen timer counts down through each session, so you can "
-                "start it and leave it running.\n\n"
-                "All audio is original and synthesised for this channel.")
-        tags = ["pomodoro", "pomodoro timer", "25 minute timer", "study timer",
-                "focus timer", "study with me", "deep work", "concentration",
-                TEXTURE_LABEL[meta['texture']].lower(), "ambient"]
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
                  "video": str(final), "thumbnail": str(thumb)})

@@ -41,7 +41,9 @@ PURPOSES = {
     "study":      {"beat": (10.0, 13.0), "tone": 0.13, "pad": 0.50, "noise": 0.66, "cutoff": 2400},
 }
 
-TEXTURES = ["rain", "ocean", "wind", "stream", "fire", "whitenoise", "none"]
+# Sentetik dokular gercekci degil - gercek CC0 kayit eklenene kadar KAPALI.
+TEXTURES = ["none"]
+ALL_TEXTURES = ["rain", "ocean", "wind", "stream", "fire", "whitenoise", "none"]
 
 FOLD_ABOVE = 500.0
 
@@ -219,15 +221,18 @@ def soft_open(stereo, seconds=6.0):
     return stereo
 
 
-def build(loop_sec=600, carrier=None, purpose=None, texture=None, seed=None):
+def build(loop_sec=600, carrier=None, purpose=None, texture=None, seed=None,
+          beat=None, label_hz=None):
     rng = np.random.default_rng(seed)
 
-    carrier = int(carrier or rng.choice(list(CARRIERS.keys())))
+    carrier = float(carrier or rng.choice(list(CARRIERS.keys())))
     purpose = purpose or str(rng.choice(list(PURPOSES.keys())))
     texture = texture if texture is not None else str(rng.choice(TEXTURES))
 
     cfg = PURPOSES[purpose]
-    beat = round(float(rng.uniform(*cfg["beat"])), 2)
+    if beat is None:
+        beat = round(float(rng.uniform(*cfg["beat"])), 2)
+    beat = float(beat)
     cutoff = cfg["cutoff"]
 
     cross = 8.0
@@ -256,9 +261,9 @@ def build(loop_sec=600, carrier=None, purpose=None, texture=None, seed=None):
     stereo = _norm(stereo, 0.80)
 
     meta = {
-        "carrier_hz": carrier,
+        "carrier_hz": label_hz if label_hz is not None else carrier,
         "played_hz": round(fold_carrier(carrier), 1),
-        "carrier_meaning": CARRIERS[carrier],
+        "carrier_meaning": CARRIERS.get(int(carrier), "ambient tone"),
         "beat_hz": beat,
         "purpose": purpose,
         "texture": texture,

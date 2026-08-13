@@ -1,0 +1,90 @@
+name: Publish ambient video
+
+on:
+  schedule:
+    # UTC saat - Turkiye = UTC+3.  Gunde 5 video.
+    - cron: '0 3 * * *'    # 06:00 TR
+    - cron: '0 7 * * *'    # 10:00 TR
+    - cron: '0 11 * * *'   # 14:00 TR
+    - cron: '0 15 * * *'   # 18:00 TR
+    - cron: '0 19 * * *'   # 22:00 TR
+  workflow_dispatch:
+    inputs:
+      privacy:
+        description: 'private / unlisted / public'
+        default: 'private'
+      hours:
+        description: 'video suresi (saat)'
+        default: '1'
+      carrier:
+        description: 'belirli bir frekans (bos birakirsan siradaki gelir)'
+        default: ''
+
+# state.json'i depoya geri yazabilmek icin
+permissions:
+  contents: write
+
+# ayni anda iki calisma olursa frekans sayaci bozulmasin
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: FFmpeg kur
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: Python paketleri
+        run: pip install -q -r requirements.txt
+
+      - name: Video uret
+        run: |
+          EXTRA=""
+          if [ -n "${{ github.event.inputs.carrier }}" ]; then
+            EXTRA="--carrier ${{ github.event.inputs.carrier }}"
+          fi
+          python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }} $EXTRA
+
+      - name: Ozet
+        run: |
+          python - <<'PY'
+          import json
+          m = json.load(open('out/meta.json'))
+          print('Baslik :', m['title'])
+          print('Frekans:', m['carrier_hz'], 'Hz   calinan:', m['played_hz'], 'Hz')
+          print('Mod    :', m.get('mode'), ' beat', m['beat_hz'], 'Hz')
+          PY
+          ls -lh out/
+
+      - name: YouTube'a yukle
+        env:
+          YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          PRIVACY: ${{ github.event.inputs.privacy || 'private' }}
+        run: python upload.py out/meta.json
+
+      - name: Frekans sayacini kaydet
+        if: success()
+        run: |
+          if [ -f state.json ]; then
+            git config user.name  "tonebed-bot"
+            git config user.email "actions@github.com"
+            git add state.json
+            git diff --staged --quiet || git commit -m "frekans sayaci ilerledi [skip ci]"
+            git push
+          fi
