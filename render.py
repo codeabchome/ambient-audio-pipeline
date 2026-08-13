@@ -199,7 +199,16 @@ def main():
         channel="TONEBED",
     )
     cover_img.save(img)
-    print("Kapak yazisi eklendi")
+
+    # YouTube kucuk resim siniri 2 MB -> ayri, sikistirilmis JPEG uret
+    thumb = out / "thumb.jpg"
+    t = cover_img.copy()
+    t.thumbnail((1280, 720), Image.LANCZOS)
+    for q in (90, 85, 78, 70, 60):
+        t.save(thumb, "JPEG", quality=q, optimize=True)
+        if thumb.stat().st_size < 1_900_000:
+            break
+    print(f"Kapak yazisi eklendi (kucuk resim {thumb.stat().st_size//1024} KB)")
 
     # 3) hareket dongusu (tek segment, kusursuz doner)
     print("== 3/5  hareket dongusu render ediliyor")
@@ -257,7 +266,7 @@ def main():
     title, desc, tags = build_titles(meta, total_sec)
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
-                 "video": str(final), "thumbnail": str(img)})
+                 "video": str(final), "thumbnail": str(thumb)})
     (out / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
 
     # ara dosyalari temizle (disk sismesin)

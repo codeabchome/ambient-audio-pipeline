@@ -85,14 +85,22 @@ def upload(meta_path="out/meta.json", privacy="private"):
     vid = resp["id"]
     print(f"TAMAM  https://youtu.be/{vid}")
 
-    # kapak gorseli (varsa)
+    # kapak gorseli - BASARISIZ OLSA BILE is patlamasin, video zaten yuklendi
     thumb = meta.get("thumbnail")
     if thumb and Path(thumb).exists():
-        try:
-            yt.thumbnails().set(videoId=vid, media_body=MediaFileUpload(thumb)).execute()
-            print("Kapak gorseli yuklendi")
-        except HttpError as e:
-            print("Kapak yuklenemedi (dogrulanmamis kanal olabilir):", e)
+        size = Path(thumb).stat().st_size
+        if size >= 2 * 1024 * 1024:
+            print(f"Kapak atlandi: {size//1024} KB, sinir 2048 KB")
+        else:
+            try:
+                yt.thumbnails().set(
+                    videoId=vid,
+                    media_body=MediaFileUpload(thumb, mimetype="image/jpeg"),
+                ).execute()
+                print("Kapak gorseli yuklendi")
+            except Exception as e:
+                # dogrulanmamis kanal / boyut / gecici hata - hepsi tolere edilir
+                print("Kapak yuklenemedi (video yuklendi, sorun degil):", e)
 
     return vid
 
