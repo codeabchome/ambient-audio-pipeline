@@ -16,6 +16,8 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+
+from PIL import Image
 from pathlib import Path
 
 import generate_audio as ga
@@ -175,10 +177,29 @@ def main():
     del stereo
     print(json.dumps(meta, indent=2))
 
-    # 2) gorsel
+    # 2) gorsel + kapak yazisi
     print("== 2/5  gorsel hazirlaniyor")
+    raw = out / "art.png"
     img = out / "bg.png"
-    art_meta = build_background(img, seed, meta["purpose"])
+    art_meta = build_background(raw, seed, meta["purpose"])
+
+    import cover
+    total_sec_tmp = int(a.hours * 3600)
+    hrs = total_sec_tmp / 3600
+    dur_lbl = (f"{int(round(hrs))} Hour" if abs(hrs - 1) < 0.01 else
+               (f"{int(round(hrs))} Hours" if hrs >= 1 else
+                f"{int(round(total_sec_tmp/60))} Minutes"))
+    cover_img = cover.add_text(
+        Image.open(raw),
+        meta["carrier_hz"],
+        PURPOSE_LABEL[meta["purpose"]],
+        TEXTURE_LABEL[meta["texture"]],
+        dur_lbl,
+        purpose=meta["purpose"],
+        channel="TONEBED",
+    )
+    cover_img.save(img)
+    print("Kapak yazisi eklendi")
 
     # 3) hareket dongusu (tek segment, kusursuz doner)
     print("== 3/5  hareket dongusu render ediliyor")
@@ -236,11 +257,11 @@ def main():
     title, desc, tags = build_titles(meta, total_sec)
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
-                 "video": str(final), "thumbnail_source": str(img)})
+                 "video": str(final), "thumbnail": str(img)})
     (out / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
 
     # ara dosyalari temizle (disk sismesin)
-    for f in (wav, motion, m4a):
+    for f in (wav, motion, m4a, raw):
         f.unlink(missing_ok=True)
 
     size = final.stat().st_size / 1e6

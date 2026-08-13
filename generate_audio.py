@@ -34,11 +34,11 @@ CARRIERS = {
 
 # tone = tasiyici seviyesi, pad = yastik, noise = doga sesi, cutoff = filtre
 PURPOSES = {
-    "sleep":      {"beat": (0.5, 3.0),   "tone": 0.10, "pad": 0.60, "noise": 0.62, "cutoff": 1400},
-    "meditation": {"beat": (4.0, 7.5),   "tone": 0.12, "pad": 0.64, "noise": 0.52, "cutoff": 1800},
-    "relax":      {"beat": (8.0, 11.0),  "tone": 0.12, "pad": 0.62, "noise": 0.55, "cutoff": 2000},
-    "focus":      {"beat": (14.0, 18.0), "tone": 0.14, "pad": 0.55, "noise": 0.50, "cutoff": 2600},
-    "study":      {"beat": (10.0, 13.0), "tone": 0.13, "pad": 0.58, "noise": 0.52, "cutoff": 2400},
+    "sleep":      {"beat": (0.5, 3.0),   "tone": 0.10, "pad": 0.52, "noise": 0.74, "cutoff": 1400},
+    "meditation": {"beat": (4.0, 7.5),   "tone": 0.12, "pad": 0.56, "noise": 0.66, "cutoff": 1800},
+    "relax":      {"beat": (8.0, 11.0),  "tone": 0.12, "pad": 0.54, "noise": 0.68, "cutoff": 2000},
+    "focus":      {"beat": (14.0, 18.0), "tone": 0.14, "pad": 0.48, "noise": 0.64, "cutoff": 2600},
+    "study":      {"beat": (10.0, 13.0), "tone": 0.13, "pad": 0.50, "noise": 0.66, "cutoff": 2400},
 }
 
 TEXTURES = ["rain", "ocean", "wind", "stream", "none"]
