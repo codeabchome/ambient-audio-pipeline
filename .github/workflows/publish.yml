@@ -13,6 +13,9 @@ on:
       hours:
         description: 'video suresi (saat)'
         default: '1'
+      mode:
+        description: 'ambient veya pomodoro'
+        default: 'ambient'
 
 jobs:
   build:
@@ -37,7 +40,10 @@ jobs:
         run: pip install -q -r requirements.txt
 
       - name: Video uret
-        run: python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }}
+        run: |
+          EXTRA=""
+          if [ "${{ github.event.inputs.mode }}" = "pomodoro" ]; then EXTRA="--pomodoro"; fi
+          python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }} $EXTRA
 
       - name: Ozet
         run: |
