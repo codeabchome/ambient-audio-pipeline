@@ -41,7 +41,7 @@ PURPOSES = {
     "study":      {"beat": (10.0, 13.0), "tone": 0.13, "pad": 0.50, "noise": 0.66, "cutoff": 2400},
 }
 
-TEXTURES = ["rain", "ocean", "wind", "stream", "none"]
+TEXTURES = ["rain", "ocean", "wind", "stream", "fire", "whitenoise", "none"]
 
 FOLD_ABOVE = 500.0
 
@@ -108,6 +108,25 @@ def texture_layer(kind, n, rng):
         gust = 1.0 + 0.32 * np.sin(2 * np.pi * 0.021 * t + rng.uniform(0, 6.28))
         gust = gust * (1.0 + 0.18 * np.sin(2 * np.pi * 0.007 * t))
         return _norm(base * gust, 1.0)
+
+    if kind == "fire":
+        # somine: derin ugultu + rastgele catirti
+        base = lowpass_fft(brown_noise(n, rng), 900, 1.4)
+        flicker = 1.0 + 0.30 * np.sin(2 * np.pi * 0.09 * t + rng.uniform(0, 6.28))
+        flicker = flicker * (1.0 + 0.20 * np.sin(2 * np.pi * 0.31 * t))
+        crack = np.zeros(n)
+        # saniyede ~2 catirti
+        hits = rng.integers(0, n, size=max(1, int(n / SR * 2)))
+        crack[hits] = rng.uniform(0.5, 1.0, size=len(hits))
+        env = np.exp(-np.arange(int(SR * 0.05)) / (SR * 0.010))
+        crack = np.convolve(crack, env, mode="same")
+        crack = lowpass_fft(crack, 3800, 1.2)
+        return _norm(base * flicker + crack * 0.55, 1.0)
+
+    if kind == "whitenoise":
+        # saf, duz gurultu - bebek/uyku icin klasik
+        base = pink_noise(n, rng) * 0.55 + rng.standard_normal(n) * 0.45
+        return _norm(lowpass_fft(base, 7000, 1.0), 1.0)
 
     if kind == "stream":
         base = pink_noise(n, rng) + pink_noise(n, rng) * 0.40

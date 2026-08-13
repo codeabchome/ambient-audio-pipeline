@@ -67,6 +67,8 @@ PURPOSE_LABEL = {
 }
 
 TEXTURE_LABEL = {
+    "fire": "Fireplace",
+    "whitenoise": "White Noise",
     "rain": "Rain Sounds",
     "ocean": "Ocean Waves",
     "wind": "Soft Wind",
@@ -153,6 +155,57 @@ def build_titles(meta, total_sec=3600):
     return title, desc, tags[:15]
 
 
+def render_pomodoro(bg_path, out_path, total_sec, work_min=25, break_min=5):
+    """
+    Pomodoro sayaci: 25 dk calisma / 5 dk mola dongusu.
+    Sayac her saniye degistigi icin dongu numarasi kullanilamaz,
+    tum sure render edilir. Arka plan yumusatilir:
+      - dosya 14 kat kuculur (detayli desen sikismiyor)
+      - sayac cok daha okunakli olur
+    """
+    from PIL import Image, ImageFilter, ImageEnhance
+
+    soft = out_path.parent / "pomo_bg.png"
+    im = Image.open(bg_path).convert("RGB").resize((WIDTH, HEIGHT), Image.LANCZOS)
+    im = im.filter(ImageFilter.GaussianBlur(18))
+    im = ImageEnhance.Brightness(im).enhance(0.55)
+    im.save(soft)
+
+    cycle = (work_min + break_min) * 60
+    work_s = work_min * 60
+
+    font = None
+    for c in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+              "fonts/JosefinSans.ttf"):
+        if Path(c).exists():
+            font = c
+            break
+
+    # kalan sure: calisma icindeyse work_s'den, molada ise cycle'dan geri sayar
+    rem = f"if(lt(mod(t\\,{cycle})\\,{work_s}), {work_s}-mod(t\\,{cycle}), {cycle}-mod(t\\,{cycle}))"
+    mm = f"%{{eif\\:floor(({rem})/60)\\:d\\:2}}"
+    ss = f"%{{eif\\:mod(floor({rem})\\,60)\\:d\\:2}}"
+    label = f"%{{eif\\:1\\:d\\:1}}"
+
+    draw = (f"drawtext=fontfile={font}:text='{mm}\\:{ss}':"
+            f"fontsize=220:fontcolor=white:"
+            f"shadowcolor=black@0.7:shadowx=4:shadowy=4:"
+            f"x=(w-tw)/2:y=(h-th)/2-30")
+    # calisma/mola etiketi
+    phase = (f"drawtext=fontfile={font}:"
+             f"text='%{{expr_int_format\\:1\\:d\\:1}}':fontsize=1:fontcolor=black@0")
+
+    run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-loop", "1", "-framerate", "6", "-t", str(total_sec), "-i", str(soft),
+        "-vf", f"{draw},format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage",
+        "-crf", "30", "-g", "24", "-an", str(out_path),
+    ])
+    soft.unlink(missing_ok=True)
+
+
 # ------------------------------------------------------------------ ana akis
 
 def main():
@@ -163,6 +216,7 @@ def main():
     ap.add_argument("--purpose", default=None)
     ap.add_argument("--texture", default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--pomodoro", action="store_true", help="sayacli calisma videosu")
     a = ap.parse_args()
 
     seed = a.seed if a.seed is not None else random.randrange(1, 10**9)
@@ -210,30 +264,36 @@ def main():
             break
     print(f"Kapak yazisi eklendi (kucuk resim {thumb.stat().st_size//1024} KB)")
 
-    # 3) hareket dongusu (tek segment, kusursuz doner)
-    print("== 3/5  hareket dongusu render ediliyor")
-    frames = MOTION_LOOP_SEC * FPS
-    motion = out / "motion.mp4"
-    # cos tabanli zoom: basta ve sonda ayni deger -> dikissiz doner
-    zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
-    # renk kaymasi da tam bir tur atsin -> dongude renk atlamasi olmaz
-    huexpr = f"26*sin(2*PI*t/{MOTION_LOOP_SEC})"
-    run([
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC), "-i", str(img),
-        "-vf", (f"scale=2560:-2,"
-                f"zoompan=z='{zexpr}':d=1:"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"s={WIDTH}x{HEIGHT}:fps={FPS},"
-                f"hue=h='{huexpr}':s=1.05,"
-                f"format=yuv420p"),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "29",
-        "-g", str(FPS * 4), "-an", str(motion),
-    ])
+    total_sec = int(a.hours * 3600)
+
+    # 3) gorsel katman
+    if a.pomodoro:
+        print("== 3/5  pomodoro sayaci render ediliyor")
+        motion = out / "motion.mp4"
+        render_pomodoro(img, motion, total_sec)
+        video_reps = 0
+    else:
+        print("== 3/5  hareket dongusu render ediliyor")
+        frames = MOTION_LOOP_SEC * FPS
+        motion = out / "motion.mp4"
+        zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
+        huexpr = f"26*sin(2*PI*t/{MOTION_LOOP_SEC})"
+        run([
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC), "-i", str(img),
+            "-vf", (f"scale=2560:-2,"
+                    f"zoompan=z='{zexpr}':d=1:"
+                    f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                    f"s={WIDTH}x{HEIGHT}:fps={FPS},"
+                    f"hue=h='{huexpr}':s=1.05,"
+                    f"format=yuv420p"),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "29",
+            "-g", str(FPS * 4), "-an", str(motion),
+        ])
+        video_reps = max(1, -(-total_sec // MOTION_LOOP_SEC)) - 1
 
     # 4) sesi hedef sureye uzat + encode
     print("== 4/5  ses hedef sureye uzatiliyor")
-    total_sec = int(a.hours * 3600)
     audio_reps = max(1, -(-total_sec // AUDIO_LOOP_SEC)) - 1
     m4a = out / "audio.m4a"
     # yumusak acilis/kapanis TAM sureye bir kez uygulanir
@@ -251,7 +311,6 @@ def main():
 
     # 5) birlestir (-c copy => yeniden kodlama yok, saniyeler surer)
     print("== 5/5  video birlestiriliyor")
-    video_reps = max(1, -(-total_sec // MOTION_LOOP_SEC)) - 1
     final = out / "video.mp4"
     run([
         "ffmpeg", "-y", "-loglevel", "error",
@@ -264,6 +323,18 @@ def main():
 
     # metadata
     title, desc, tags = build_titles(meta, total_sec)
+    if a.pomodoro:
+        dur = title.split("|")[-1].strip()
+        title = f"Pomodoro Timer 25/5 | {TEXTURE_LABEL[meta['texture']]} | {dur}"
+        desc = ("25 minute focus sessions with 5 minute breaks, on a continuous "
+                f"loop with {TEXTURE_LABEL[meta['texture']].lower()} and a "
+                f"{meta['carrier_hz']}Hz ambient bed.\n\n"
+                "The on-screen timer counts down through each session, so you can "
+                "start it and leave it running.\n\n"
+                "All audio is original and synthesised for this channel.")
+        tags = ["pomodoro", "pomodoro timer", "25 minute timer", "study timer",
+                "focus timer", "study with me", "deep work", "concentration",
+                TEXTURE_LABEL[meta['texture']].lower(), "ambient"]
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
                  "video": str(final), "thumbnail": str(thumb)})
