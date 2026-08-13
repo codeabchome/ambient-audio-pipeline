@@ -1,0 +1,41 @@
+name: Ses kutuphanesi tara
+
+on:
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 'rain / ocean / stream / forest / wind / fire / night / thunder'
+        default: 'rain'
+      count:
+        description: 'kac aday'
+        default: '6'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: FFmpeg + numpy
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          pip install -q numpy
+
+      - name: Tara ve kalite testinden gecir
+        env:
+          FREESOUND_KEY: ${{ secrets.FREESOUND_KEY }}
+        run: |
+          python library_scan.py --category ${{ github.event.inputs.category }} --count ${{ github.event.inputs.count }}
+
+      - name: Adaylari artifact olarak yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: adaylar-${{ github.event.inputs.category }}
+          path: candidates/
+          retention-days: 7
