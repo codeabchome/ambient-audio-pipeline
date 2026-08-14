@@ -20,7 +20,7 @@ on:
         description: 'belirli bir frekans (bos birakirsan siradaki gelir)'
         default: ''
       mode:
-        description: 'auto / frequency / nature / piano'
+        description: 'auto / frequency / nature / music'
         default: 'auto'
 
 # state.json'i depoya geri yazabilmek icin
@@ -65,20 +65,27 @@ jobs:
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ] || [ "$MODE" = "auto" ]; then
             # Gunluk dagilim (TR saati):
-            #   06:00 frekans (populer)   10:00 doga+piyano
-            #   14:00 frekans (populer)   18:00 doga+piyano
+            #   06:00 frekans (populer)   10:00 saf doga
+            #   14:00 frekans (populer)   18:00 ambient muzik
             #   22:00 saf doga
             H=$(date -u +%H)
             case "$H" in
               3|11) MODE=frequency ;;
-              7|15) MODE=piano ;;
-              19)   MODE=nature ;;
+              7|19) MODE=nature ;;
+              15)   MODE=music ;;
               *)    MODE=frequency ;;
             esac
           fi
           case "$MODE" in
             nature) EXTRA="$EXTRA --nature" ;;
-            piano)  EXTRA="$EXTRA --piano" ;;
+            music)
+              # 3 tur sirayla: gunun gununa gore doner
+              G=$(( $(date -u +%j) % 3 ))
+              case "$G" in
+                0) EXTRA="$EXTRA --music deep_work" ;;
+                1) EXTRA="$EXTRA --music sleep" ;;
+                2) EXTRA="$EXTRA --music meditation" ;;
+              esac ;;
           esac
           echo "MOD: $MODE"
           python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }} $EXTRA
