@@ -168,3 +168,67 @@ if __name__ == "__main__":
         nm, ben = name_for(hz)
         p = plan_for(hz)
         print(f"{format_hz(hz):>5} Hz | {p['mode']:5} | {nm} — {ben}")
+
+
+# ---------------------------------------------------------------- doga adlari
+
+NATURE_NAMES = {
+    "rain":    ("Gentle Rain", "Rain Sounds for Sleep & Study"),
+    "ocean":   ("Ocean Waves", "Calming Sea Sounds"),
+    "stream":  ("Forest Stream", "Flowing Water Sounds"),
+    "forest":  ("Forest Ambience", "Birdsong & Woodland Calm"),
+    "wind":    ("Soft Wind", "Gentle Wind Ambience"),
+    "fire":    ("Crackling Fireplace", "Cozy Fire Sounds"),
+    "night":   ("Summer Night", "Crickets & Night Ambience"),
+    "thunder": ("Rain & Distant Thunder", "Stormy Night Ambience"),
+}
+
+
+def nature_name(category, recording=""):
+    """Kategori + kayit adina gore baslik ciftini sec."""
+    base = NATURE_NAMES.get(category, (category.title(), "Nature Ambience"))
+    r = recording.lower()
+    if category == "rain":
+        if "thunder" in r or "storm" in r:
+            return NATURE_NAMES["thunder"]
+        if "tent" in r:
+            return ("Rain on a Tent", "Cozy Rain Sounds")
+        if "forest" in r or "bird" in r:
+            return ("Rain in the Forest", "Rain & Birdsong")
+        if "frog" in r or "night" in r:
+            return ("Rainy Night", "Night Rain Ambience")
+    return base
+
+
+# ------------------------------------------------------- populer frekanslar
+
+# Internette en cok aranan/dinlenen frekanslar (arama hacmine gore sirali)
+POPULAR = [
+    528,    # Miracle Tone - acik ara en populer
+    432,    # Natural Tuning
+    963,    # Gateway to the Divine
+    396,    # Release the Fear
+    639,    # Harmonious Connection
+    7.83,   # Schumann Resonance
+    174,    # Foundation / Pain Relief
+    852,    # Return to Spirit
+    741,    # Sonic Clarity
+    417,    # Undoing Situations
+    285,    # Tissue Renewal
+    111,    # Cell Regeneration
+    1111,   # Angelic Portal
+    136.1,  # Cosmic OM
+    10,     # Alpha Gateway
+    4,      # Theta / deep meditation
+    2,      # Delta / deep sleep
+]
+
+
+def popular_next(advance=True):
+    """Populer listeden sirayla frekans ver (ayri sayac)."""
+    st = load_state()
+    i = st.get("pop_i", 0) % len(POPULAR)
+    if advance:
+        st["pop_i"] = (i + 1) % len(POPULAR)
+        save_state(st)
+    return POPULAR[i]

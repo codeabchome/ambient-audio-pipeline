@@ -32,16 +32,32 @@ import numpy as np
 API = "https://freesound.org/apiv2"
 
 # Kategori -> arama sorgulari (birden fazla sorgu = cesitlilik)
+# SADECE rahatlatici kategoriler. Hayvan sesi olarak yalniz KUS kabul.
 CATEGORIES = {
-    "rain":   ["rain steady loop", "rain ambience field recording", "gentle rain"],
-    "ocean":  ["ocean waves loop", "sea waves ambience", "calm waves beach"],
-    "stream": ["stream water loop", "creek flowing", "river gentle"],
-    "forest": ["forest ambience birds", "woodland morning ambience", "nature ambience calm"],
-    "wind":   ["wind ambience soft", "gentle wind trees", "wind loop calm"],
-    "fire":   ["fireplace crackling loop", "campfire ambience", "fire crackle calm"],
-    "night":  ["night crickets ambience", "summer night loop", "night nature calm"],
-    "thunder":["distant thunder rain", "soft thunder ambience", "storm ambience calm"],
+    "rain":    ["rain steady loop", "rain ambience field recording", "gentle rain window"],
+    "ocean":   ["ocean waves loop", "sea waves ambience", "calm waves beach"],
+    "stream":  ["stream water loop", "creek flowing gentle", "river calm"],
+    "birds":   ["birdsong morning ambience", "birds forest ambience", "gentle birdsong"],
+    "forest":  ["forest ambience calm", "woodland morning birds", "quiet forest wind"],
+    "wind":    ["wind ambience soft", "gentle wind trees", "wind loop calm"],
+    "fire":    ["fireplace crackling loop", "campfire ambience calm", "fire crackle cozy"],
+    "thunder": ["distant thunder rain", "soft thunder ambience", "gentle storm rain"],
+    "snow":    ["winter wind ambience", "snowstorm gentle ambience", "cold wind soft"],
 }
+
+# Rahatlatici OLMAYAN icerik: isim/etikette gecerse aday elenir
+EXCLUDE_TERMS = [
+    "frog", "cricket", "insect", "cicada", "owl", "wolf", "dog", "cat",
+    "cow", "sheep", "goat", "rooster", "chicken", "duck", "goose",
+    "monkey", "seagull", "crow", "raven", "traffic", "car", "train",
+    "people", "voice", "talk", "crowd", "city", "siren", "horn",
+    "scream", "horror", "scary",
+]
+
+
+def name_ok(name):
+    n = name.lower()
+    return not any(term in n for term in EXCLUDE_TERMS)
 
 MIN_SR = 44100
 MIN_DUR = 60.0
@@ -162,6 +178,9 @@ def scan(key, category, count, outdir):
                 break
             sid = snd["id"]
             if any(a["id"] == sid for a in accepted):
+                continue
+            if not name_ok(snd["name"]):
+                print(f"  [icerik] {sid} | {snd['name'][:48]} | rahatlatici degil, atlandi")
                 continue
 
             raw = tmp / f"{sid}.ogg"

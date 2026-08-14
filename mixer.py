@@ -160,60 +160,73 @@ def texture_from_recording(path, need_sec, rng):
 
 # ---------------------------------------------------------------- ana miks
 
-def build_mix(loop_sec, carrier, beat, label_hz, purpose, category, seed):
+def build_mix(loop_sec, carrier, beat, label_hz, purpose, category, seed,
+              piano=False):
     """
-    Tam miks: gercek kayit + frekans yatagi.
-    category None ise saf frekans moduna duser.
-    Doner: (stereo, meta)
+    Uc bagimsiz mod:
+      category None            -> saf frekans (generate_audio v2)
+      category dolu, piano=F   -> SADECE gercek kayit
+      category dolu, piano=T   -> gercek kayit + duygusal piyano
+    Frekans tonu ile doga/piyano ASLA karismaz.
     """
     rng = np.random.default_rng(seed)
-
-    # 1) frekans yatagi (v2 motoru, doku kapali)
-    bed, meta = ga.build(loop_sec, carrier=carrier, purpose=purpose,
-                         texture="none", seed=seed, beat=beat,
-                         label_hz=label_hz)
 
     rec_path = pick_recording(category, rng) if category else None
 
     if rec_path is None:
+        stereo, meta = ga.build(loop_sec, carrier=carrier, purpose=purpose,
+                                texture="none", seed=seed, beat=beat,
+                                label_hz=label_hz)
         meta["mix"] = "pure"
-        return bed, meta
+        return stereo, meta
 
-    # 2) gercek kayit katmani
     cross = 8.0
-    tex = texture_from_recording(rec_path, loop_sec + cross, rng)
+    tex = texture_from_recording(rec_path, loop_sec + cross, rng).astype(np.float32)
 
-    bed = bed.astype(np.float32)
-    tex = tex.astype(np.float32)
+    # sadece temizlik: cok tiz sertligi hafif al
+    tex = highshelf(tex, 7000, -2.0)
 
-    # 3) EQ ile yer acma
-    bed_eq = lowpass(bed, 1800, 1.4); del bed
-    tex_eq = highshelf(tex, 6500, -2.5); del tex
+    # yumusak kompresyon: ani seviye oynamalarini topla
+    tex = soft_compress(tex, thresh=0.5, ratio=2.5)
 
-    # 4) seviyeler: kayit ONDE, frekans yatagi altta
-    tex_eq /= (np.abs(tex_eq).max() + 1e-9)
-    bed_eq /= (np.abs(bed_eq).max() + 1e-9)
-    mix = (0.72 * tex_eq[:, :bed_eq.shape[1]] + 0.34 * bed_eq).astype(np.float32)
-    del tex_eq, bed_eq
+    # kusursuz dongu
+    tex = seamless(tex, cross)
 
-    # 5) yumusak kompresyon
-    mix = soft_compress(mix, thresh=0.45, ratio=2.5)
-
-    # 6) kusursuz dongu
-    mix = seamless(mix, cross)
-
-    # 7) LUFS normalizasyonu (yaklasik; ffmpeg son adimda dogrular)
-    cur = measure_lufs_approx(mix)
+    # yaklasik LUFS hedefe cek (kesin deger encode'da loudnorm ile)
+    cur = measure_lufs_approx(tex)
     gain = 10 ** ((TARGET_LUFS - cur) / 20)
-    mix = np.clip(mix * gain, -0.98, 0.98)
+    tex = np.clip(tex * gain, -0.98, 0.98)
 
-    meta.update({
-        "mix": "recording+bed",
+    if piano:
+        import piano as pn
+        pw = Path("/tmp/mix_piano.wav")
+        pn.render_piano(loop_sec / 60 + 0.5, seed + 11, pw)
+        pd, psr = read_wav(pw)
+        pd = pd[:, :tex.shape[1]].astype(np.float32)
+        if pd.shape[1] < tex.shape[1]:
+            pad = np.zeros((2, tex.shape[1] - pd.shape[1]), dtype=np.float32)
+            pd = np.concatenate([pd, pad], axis=1)
+        # piyano yagmurun YANINDA net duyulur ama bogmasin
+        pd /= (np.abs(pd).max() + 1e-9)
+        tex /= (np.abs(tex).max() + 1e-9)
+        tex = (0.62 * pd + 0.55 * tex).astype(np.float32)
+        tex = soft_compress(tex, thresh=0.5, ratio=2.2)
+        tex = seamless(tex, cross)
+        cur2 = measure_lufs_approx(tex)
+        tex = np.clip(tex * 10 ** ((TARGET_LUFS - cur2) / 20), -0.98, 0.98)
+        pw.unlink(missing_ok=True)
+
+    meta = {
+        "mix": "nature_piano" if piano else "nature",
         "recording": rec_path.name,
         "category": category,
         "lufs_pre": round(float(cur), 1),
-    })
-    return mix, meta
+        "carrier_hz": label_hz, "played_hz": 0,
+        "beat_hz": 0, "purpose": purpose,
+        "texture": category, "loop_seconds": loop_sec,
+        "seed": seed, "engine": "nature-v1",
+    }
+    return tex, meta
 
 
 def encode_with_loudnorm(wav_in, m4a_out, total_sec, reps):
@@ -248,3 +261,70 @@ def choose_category(purpose, rng):
     if not have:
         return None
     return have[int(rng.integers(0, len(have)))]
+
+
+# ---------------------------------------------------------------- tarif miksi
+
+def build_recipe(loop_sec, recipe, seed):
+    """
+    Tarife gore cok katmanli doga miksi (+ istege bagli piyano).
+    Katmanlar tarifteki seviyelerle toplanir, sonra ortak isleme girer.
+    """
+    rng = np.random.default_rng(seed)
+    cross = 8.0
+    need = loop_sec + cross
+
+    layers, used = [], []
+    for cat, lvl in recipe["layers"]:
+        path = pick_recording(cat, rng)
+        if path is None:
+            continue
+        seg = texture_from_recording(path, need, rng).astype(np.float32)
+        seg = highshelf(seg, 7000, -2.0)
+        seg /= (np.abs(seg).max() + 1e-9)
+        layers.append(seg * lvl)
+        used.append(path.name)
+
+    if not layers:
+        return None, None
+
+    n = min(l.shape[1] for l in layers)
+    mix = np.zeros((2, n), dtype=np.float32)
+    for l in layers:
+        mix += l[:, :n]
+
+    piano_file = None
+    if recipe.get("piano"):
+        import piano as pn
+        pw = Path("/tmp/recipe_piano.wav")
+        pn.render_piano(loop_sec / 60 + 0.6, seed + 11, pw)
+        pd, _ = read_wav(pw)
+        pd = pd[:, :n].astype(np.float32)
+        if pd.shape[1] < n:
+            pd = np.concatenate(
+                [pd, np.zeros((2, n - pd.shape[1]), dtype=np.float32)], axis=1)
+        pd /= (np.abs(pd).max() + 1e-9)
+        mix /= (np.abs(mix).max() + 1e-9)
+        # piyano onde-net, doga altta sarici
+        mix = (0.60 * pd + 0.62 * mix).astype(np.float32)
+        pw.unlink(missing_ok=True)
+        piano_file = "procedural"
+
+    mix = soft_compress(mix, thresh=0.5, ratio=2.3)
+    mix = seamless(mix, cross)
+    cur = measure_lufs_approx(mix)
+    mix = np.clip(mix * 10 ** ((TARGET_LUFS - cur) / 20), -0.98, 0.98)
+
+    meta = {
+        "mix": "recipe",
+        "recipe": recipe["id"],
+        "layers": [c for c, _ in recipe["layers"]],
+        "recordings": used,
+        "piano": bool(piano_file),
+        "video_key": recipe["video"],
+        "lufs_pre": round(float(cur), 1),
+        "loop_seconds": loop_sec,
+        "seed": seed,
+        "engine": "recipe-v1",
+    }
+    return mix, meta

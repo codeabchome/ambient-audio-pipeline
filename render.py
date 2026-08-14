@@ -21,6 +21,8 @@ from PIL import Image
 from pathlib import Path
 
 import generate_audio as ga
+import cover
+import schedule as sch
 
 # ------------------------------------------------------------------ ayarlar
 
@@ -171,6 +173,8 @@ def main():
     ap.add_argument("--purpose", default=None)
     ap.add_argument("--texture", default=None)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--nature", action="store_true", help="saf doga sesi videosu")
+    ap.add_argument("--piano", action="store_true", help="doga + duygusal piyano")
     a = ap.parse_args()
 
     seed = a.seed if a.seed is not None else random.randrange(1, 10**9)
@@ -184,25 +188,37 @@ def main():
     if a.carrier:
         hz = float(a.carrier)
     else:
-        hz = sch.next_frequency(advance=True)
+        # populer frekans rotasyonu (en cok arananlar)
+        hz = sch.popular_next(advance=True)
 
     plan = sch.plan_for(hz)
     print(f"Frekans: {sch.format_hz(hz)} Hz  ({plan['mode']} modu)")
 
-    import mixer
+    import mixer, recipes as rcp
     _rng = __import__("numpy").random.default_rng(seed)
-    purpose = a.purpose or str(_rng.choice(["sleep","meditation","relax","focus","study"]))
-    category = a.texture if a.texture else mixer.choose_category(purpose, _rng)
 
-    stereo, meta = mixer.build_mix(
-        AUDIO_LOOP_SEC,
-        carrier=plan["carrier"],
-        beat=plan["beat"],
-        label_hz=plan["label_hz"],
-        purpose=purpose,
-        category=category,
-        seed=seed,
-    )
+    kind = "piano" if a.piano else ("nature" if a.nature else None)
+    meta = None
+    if kind:
+        st = sch.load_state()
+        recipe, st = rcp.pick(kind, "approved", st)
+        if recipe:
+            sch.save_state(st)
+            print(f"Tarif: {recipe['id']}  ({', '.join(c for c,_ in recipe['layers'])}"
+                  f"{' + piyano' if recipe['piano'] else ''})")
+            stereo, meta = mixer.build_recipe(AUDIO_LOOP_SEC, recipe, seed)
+            if meta:
+                meta["recipe_obj"] = recipe["id"]
+                _recipe = recipe
+        if meta is None:
+            print("UYARI: tarif icin kayit yok, frekansa dusuluyor")
+
+    if meta is None:
+        _recipe = None
+        purpose = a.purpose or str(_rng.choice(["sleep","meditation","relax","focus","study"]))
+        stereo, meta = mixer.build_mix(
+            AUDIO_LOOP_SEC, carrier=plan["carrier"], beat=plan["beat"],
+            label_hz=plan["label_hz"], purpose=purpose, category=None, seed=seed)
     meta["mode"] = plan["mode"]
     print(f"Miks: {meta.get('mix')}  kayit: {meta.get('recording','-')}")
     wav = out / "loop.wav"
@@ -214,27 +230,25 @@ def main():
     print("== 2/5  gorsel hazirlaniyor")
     raw = out / "art.png"
     img = out / "bg.png"
-    art_meta = build_background(raw, int(hz * 1000) + seed % 1000, meta["purpose"])
+    art_meta = build_background(raw, int(hz * 1000) + seed % 1000, meta.get("purpose", "sleep"))
 
-    import cover
     total_sec_tmp = int(a.hours * 3600)
     hrs = total_sec_tmp / 3600
     dur_lbl = (f"{int(round(hrs))} Hour" if abs(hrs - 1) < 0.01 else
                (f"{int(round(hrs))} Hours" if hrs >= 1 else
                 f"{int(round(total_sec_tmp/60))} Minutes"))
-    fname, fbenefit = sch.name_for(meta["carrier_hz"])
+
+    if meta.get("mix") == "recipe" and _recipe:
+        head_txt, fname, fbenefit = _recipe["title"], "", _recipe["sub"]
+    else:
+        fname, fbenefit = sch.name_for(meta["carrier_hz"])
+        head_txt = f"{sch.format_hz(meta['carrier_hz'])} Hz"
+
     cover_img = cover.add_text(
-        Image.open(raw),
-        sch.format_hz(meta["carrier_hz"]),
-        fname,
-        fbenefit,
-        dur_lbl,
-        purpose=meta["purpose"],
-        channel="TONEBED",
-    )
+        Image.open(raw), head_txt, fname, fbenefit, dur_lbl,
+        purpose=meta.get("purpose", "sleep"), channel="TONEBED")
     cover_img.save(img)
 
-    # YouTube kucuk resim siniri 2 MB -> ayri, sikistirilmis JPEG uret
     thumb = out / "thumb.jpg"
     t = cover_img.copy()
     t.thumbnail((1280, 720), Image.LANCZOS)
@@ -242,51 +256,74 @@ def main():
         t.save(thumb, "JPEG", quality=q, optimize=True)
         if thumb.stat().st_size < 1_900_000:
             break
-    print(f"Kapak yazisi eklendi (kucuk resim {thumb.stat().st_size//1024} KB)")
+    print(f"Kapak hazir (kucuk resim {thumb.stat().st_size//1024} KB)")
 
+    # 3) hareket katmani
+    print("== 3/5  hareket katmani")
+    motion = out / "motion.mp4"
     total_sec = int(a.hours * 3600)
+    _use_clip = False
 
-    # 3) hareket dongusu
-    print("== 3/5  hareket dongusu render ediliyor")
-    if True:
+    if meta.get("mix") == "recipe":
+        import video_bg
+        clip = out / "clip.mp4"
+        if video_bg.fetch_clip(meta["video_key"], seed, clip):
+            try:
+                video_bg.build_motion_from_clip(clip, motion, WIDTH, HEIGHT, FPS)
+                seg = 28
+                video_reps = max(1, -(-total_sec // seg)) - 1
+                _use_clip = True
+                print("Gercek video arka plan (Pexels)")
+            except Exception as e:
+                print("Klip islenemedi, gorsele dusuluyor:", e)
+            clip.unlink(missing_ok=True)
+
+    if not _use_clip:
         frames = MOTION_LOOP_SEC * FPS
-        motion = out / "motion.mp4"
         zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
         huexpr = f"26*sin(2*PI*t/{MOTION_LOOP_SEC})"
         run([
             "ffmpeg", "-y", "-loglevel", "error",
-            "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC), "-i", str(img),
+            "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC),
+            "-i", str(img),
             "-vf", (f"scale=2560:-2,"
                     f"zoompan=z='{zexpr}':d=1:"
                     f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                     f"s={WIDTH}x{HEIGHT}:fps={FPS},"
-                    f"hue=h='{huexpr}':s=1.05,"
-                    f"format=yuv420p"),
+                    f"hue=h='{huexpr}':s=1.05,format=yuv420p"),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "29",
             "-g", str(FPS * 4), "-an", str(motion),
         ])
         video_reps = max(1, -(-total_sec // MOTION_LOOP_SEC)) - 1
 
-    # 4) sesi hedef sureye uzat + encode
+    # 4) ses hedef sureye
     print("== 4/5  ses hedef sureye uzatiliyor")
     audio_reps = max(1, -(-total_sec // AUDIO_LOOP_SEC)) - 1
     m4a = out / "audio.m4a"
     mixer.encode_with_loudnorm(wav, m4a, total_sec, audio_reps)
 
-    # 5) birlestir (-c copy => yeniden kodlama yok, saniyeler surer)
+    # 5) birlestir
     print("== 5/5  video birlestiriliyor")
     final = out / "video.mp4"
     run([
         "ffmpeg", "-y", "-loglevel", "error",
         "-stream_loop", str(video_reps), "-i", str(motion),
         "-i", str(m4a),
-        "-map", "0:v", "-map", "1:a",
-        "-c:v", "copy", "-c:a", "copy",
+        "-map", "0:v", "-map", "1:a", "-c", "copy",
         "-t", str(total_sec), "-movflags", "+faststart", str(final),
     ])
 
-    # metadata
-    title, desc, tags = build_titles(meta, total_sec)
+    hours2 = total_sec / 3600
+    dur2 = (f"{int(round(hours2))} Hour" if abs(hours2-1) < 0.01 else
+            (f"{int(round(hours2))} Hours" if hours2 >= 1 else
+             f"{int(round(total_sec/60))} Minutes"))
+
+    if meta.get("mix") == "recipe" and _recipe:
+        title = rcp.build_title(_recipe, dur2)
+        desc = rcp.build_description(_recipe, dur2)
+        tags = rcp.build_tags(_recipe)
+    else:
+        title, desc, tags = build_titles(meta, total_sec)
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
                  "video": str(final), "thumbnail": str(thumb)})
