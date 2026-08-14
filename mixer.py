@@ -34,6 +34,13 @@ APPROVED = Path("approved")
 # ---------------------------------------------------------------- yardimci
 
 def read_wav(path):
+    """WAV veya FLAC oku (FLAC ise once WAV'a cevir)."""
+    path = Path(path)
+    if path.suffix.lower() != ".wav":
+        tmp = Path("/tmp") / (path.stem + "_dec.wav")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(path),
+                        "-ar", str(SR), "-ac", "2", str(tmp)], check=True)
+        path = tmp
     w = wave.open(str(path), "rb")
     n = w.getnframes()
     d = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32) / 32768
@@ -119,7 +126,7 @@ def pick_recording(category, rng):
     folder = APPROVED / category
     if not folder.exists():
         return None
-    files = sorted(folder.glob("*.wav"))
+    files = sorted(list(folder.glob("*.wav")) + list(folder.glob("*.flac")))
     if not files:
         return None
     return files[rng.integers(0, len(files))]
@@ -257,7 +264,7 @@ def choose_category(purpose, rng):
     """approved/ icinde gercekten kaydi OLAN kategorilerden sec."""
     prefer = PURPOSE_CATEGORIES.get(purpose, list(PURPOSE_CATEGORIES["relax"]))
     have = [c for c in prefer if (APPROVED / c).exists()
-            and any((APPROVED / c).glob("*.wav"))]
+            and (any((APPROVED / c).glob("*.wav")) or any((APPROVED / c).glob("*.flac")))]
     if not have:
         return None
     return have[int(rng.integers(0, len(have)))]

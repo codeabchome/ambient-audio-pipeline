@@ -190,7 +190,9 @@ def available(recipe, approved_dir):
     ad = Path(approved_dir)
     for cat, _ in recipe["layers"]:
         folder = ad / cat
-        if not folder.exists() or not any(folder.glob("*.wav")):
+        if not folder.exists():
+            return False
+        if not (any(folder.glob("*.wav")) or any(folder.glob("*.flac"))):
             return False
     return True
 
