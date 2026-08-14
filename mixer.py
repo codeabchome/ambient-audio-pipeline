@@ -325,6 +325,8 @@ def build_recipe(loop_sec, recipe, seed):
     meta = {
         "mix": "recipe",
         "recipe": recipe["id"],
+        "carrier_hz": 0, "played_hz": 0, "beat_hz": 0,
+        "purpose": "sleep",
         "layers": [c for c, _ in recipe["layers"]],
         "recordings": used,
         "piano": bool(piano_file),
