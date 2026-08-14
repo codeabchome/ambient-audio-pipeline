@@ -101,8 +101,11 @@ def compose(minutes, seed):
             spread = rng.uniform(0.03, 0.09)
             lh_notes = [root - 24, root - 12, root - 12 + tones[1], root - 12 + tones[2]]
             for k, n in enumerate(lh_notes):
-                vel = rng.randint(30, 42) - k * 2
-                events.append((t + k * spread, bar * 1.9, n, max(24, vel)))
+                # en alt nota en kuvvetli, ust notalar giderek yumusak
+                vel = rng.randint(34, 46) - k * 4 + rng.randint(-2, 2)
+                # mikro-zamanlama: her nota grid'den bagimsiz kayar
+                micro = rng.uniform(-0.012, 0.018)
+                events.append((max(0, t + k * spread + micro), bar * 1.9, n, max(22, vel)))
 
             # bazen bar ortasinda tek bas nota (nefes hissi)
             if rng.random() < 0.4:
@@ -146,7 +149,8 @@ def compose(minutes, seed):
                     dur = bar * rng.uniform(1.1, 1.6)
                 else:
                     dur = beat * rng.uniform(1.2, 1.9)
-                events.append((nt, dur, m + 12, min(64, max(26, vel))))
+                micro = rng.uniform(-0.015, 0.022)
+                events.append((max(0, nt + micro), dur, m + 12, min(66, max(24, vel))))
                 # duygusal zirvede yumusak oktav ciftleme
                 if arc > 0.85 and rng.random() < 0.35:
                     events.append((nt + 0.02, dur, m + 24, max(20, vel - 18)))
@@ -158,6 +162,10 @@ def compose(minutes, seed):
             if rng.random() < 0.3 and nt < total:
                 orn = key_root + _nearest_scale(phrase[-1] - key_root + 7) + 12
                 events.append((nt + beat * 0.4, bar, orn, rng.randint(24, 34)))
+
+            # PEDAL: cumle basinda kaldir-bas (akorlar birbirine bulasmasin)
+            events.append((max(0, t - 0.05), 0.0, -1, 0))    # pedal off isareti
+            events.append((t + 0.06, 0.0, -2, 90))           # pedal on isareti
 
             phrase_i += 1
             t += bar
@@ -180,10 +188,16 @@ def write_midi(events, path, tempo_us=1000000):
 
     msgs = []
     for start, dur, midi, vel in events:
+        t_ms = max(0, int(start * 1000))
+        if midi == -1:              # pedal kaldir
+            msgs.append((t_ms, 0xB0, 64, 0))
+            continue
+        if midi == -2:              # pedal bas
+            msgs.append((t_ms, 0xB0, 64, int(vel)))
+            continue
         midi = max(21, min(108, int(midi)))
-        on_t = max(0, int(start * 1000))
-        off_t = max(on_t + 100, int((start + dur) * 1000))
-        msgs.append((on_t, 0x90, midi, vel))
+        off_t = max(t_ms + 100, int((start + dur) * 1000))
+        msgs.append((t_ms, 0x90, midi, vel))
         msgs.append((off_t, 0x80, midi, 0))
     msgs.sort(key=lambda m: m[0])
 
@@ -210,6 +224,57 @@ def write_midi(events, path, tempo_us=1000000):
     with open(path, "wb") as f:
         f.write(b"MThd" + struct.pack(">IHHH", 6, 0, 1, TPQ))
         f.write(b"MTrk" + struct.pack(">I", len(track)) + bytes(track))
+
+
+
+
+# ------------------------------------------------------------------ reverb
+
+IR_PRESETS = {
+    # (rt60 sn, pre-delay ms, hf sonum Hz)
+    "intimate": (1.4, 8,  4200),
+    "room":     (2.2, 14, 3600),
+    "hall":     (3.4, 22, 3000),
+}
+
+
+def _make_ir(kind, seed, sr=SR):
+    """
+    Gercekci oda tepkisi (impulse response) uret:
+      erken yansimalar + ustel sonen difuz kuyruk + hava yutumu.
+    aecho'nun tekrarlayan yankisi yerine dogal, dolgun bir alan verir.
+    """
+    rt60, pre_ms, hf_hz = IR_PRESETS[kind]
+    rng = np.random.default_rng(seed)
+    n = int(sr * rt60)
+    t = np.arange(n) / sr
+
+    decay = np.exp(-6.9 * t / rt60)
+    tail = rng.standard_normal((n, 2)) * decay[:, None]
+
+    # yuksek frekanslar daha hizli soner (gercek odalarda boyle olur)
+    spec = np.fft.rfft(tail, axis=0)
+    fr = np.fft.rfftfreq(n, 1 / sr)
+    tail = np.fft.irfft(spec * (1.0 / (1.0 + (fr / hf_hz) ** 1.4))[:, None], n, axis=0)
+
+    ir = tail * 0.55
+    for d_ms, g in [(11, .42), (17, .34), (23, .30), (31, .26), (43, .20), (57, .16)]:
+        d = int(sr * d_ms / 1000)
+        if d < n:
+            ir[d] += g * rng.choice([-1.0, 1.0], 2)
+
+    pre = int(sr * pre_ms / 1000)
+    ir = np.vstack([np.zeros((pre, 2)), ir])[:n]
+    ir /= (np.abs(ir).max() + 1e-9)
+
+    path = Path(f"/tmp/ir_{kind}_{seed % 1000}.wav")
+    pcm = (np.clip(ir, -1, 1) * 32767).astype(np.int16)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(pcm.tobytes())
+    return path
 
 
 def _reverb_chain(seed):
@@ -242,13 +307,28 @@ def render_piano(minutes, seed, out_wav):
          "-r", str(SR), SF2, str(tmp_mid)],
         check=True, capture_output=True)
 
-    # uzun, yumusak reverb + hafif alcak gecirgen (ruya hissi)
+    # convolution reverb: gercek oda tepkisi ile (aecho'dan cok daha dogal)
+    r = random.Random(seed + 7)
+    kind = r.choice(["intimate", "room", "hall"])
+    ir_path = _make_ir(kind, seed)
+    wet = {"intimate": 0.30, "room": 0.38, "hall": 0.46}[kind]
+
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp_dry),
-         "-af",
-         _reverb_chain(seed),
+        ["ffmpeg", "-y", "-loglevel", "error",
+         "-i", str(tmp_dry), "-i", str(ir_path),
+         "-filter_complex",
+         (f"[0:a][1:a]afir=dry=1:wet={wet}:maxir=4:gtype=2[rv];"
+          f"[rv]highpass=f=45,"                    # gereksiz alt gurultu
+          f"equalizer=f=250:t=q:w=1.1:g=-2.2,"      # camurlu alt-orta temizligi
+          f"equalizer=f=900:t=q:w=1.4:g=-1.2,"      # burunsu bolgeyi ac
+          f"equalizer=f=4200:t=q:w=1.6:g=+1.6,"     # parlaklik / cekic detayi
+          f"equalizer=f=9000:t=q:w=1.2:g=+1.0,"     # hava
+          f"lowpass=f=13000,"
+          f"volume=1.35[out]"),
+         "-map", "[out]",
          "-ar", str(SR), "-ac", "2", "/tmp/piano_wet.wav"],
         check=True)
+    ir_path.unlink(missing_ok=True)
 
     # normalize: tepe -6 dB civari (mikste yer kalsin)
     subprocess.run(
