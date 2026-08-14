@@ -19,6 +19,9 @@ on:
       carrier:
         description: 'belirli bir frekans (bos birakirsan siradaki gelir)'
         default: ''
+      mode:
+        description: 'auto / frequency / nature / piano'
+        default: 'auto'
 
 # state.json'i depoya geri yazabilmek icin
 permissions:
@@ -45,18 +48,39 @@ jobs:
       - name: FFmpeg kur
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
+          sudo apt-get install -y -qq ffmpeg fluidsynth fluid-soundfont-gm
           ffmpeg -version | head -1
 
       - name: Python paketleri
         run: pip install -q -r requirements.txt
 
       - name: Video uret
+        env:
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
         run: |
           EXTRA=""
           if [ -n "${{ github.event.inputs.carrier }}" ]; then
-            EXTRA="--carrier ${{ github.event.inputs.carrier }}"
+            EXTRA="$EXTRA --carrier ${{ github.event.inputs.carrier }}"
           fi
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ] || [ "$MODE" = "auto" ]; then
+            # Gunluk dagilim (TR saati):
+            #   06:00 frekans (populer)   10:00 doga+piyano
+            #   14:00 frekans (populer)   18:00 doga+piyano
+            #   22:00 saf doga
+            H=$(date -u +%H)
+            case "$H" in
+              3|11) MODE=frequency ;;
+              7|15) MODE=piano ;;
+              19)   MODE=nature ;;
+              *)    MODE=frequency ;;
+            esac
+          fi
+          case "$MODE" in
+            nature) EXTRA="$EXTRA --nature" ;;
+            piano)  EXTRA="$EXTRA --piano" ;;
+          esac
+          echo "MOD: $MODE"
           python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }} $EXTRA
 
       - name: Ozet
@@ -75,7 +99,7 @@ jobs:
           YT_CLIENT_ID:     ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
+          PRIVACY: ${{ github.event.inputs.privacy || 'private' }}
         run: python upload.py out/meta.json
 
       - name: Frekans sayacini kaydet
