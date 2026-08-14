@@ -232,3 +232,63 @@ def popular_next(advance=True):
         st["pop_i"] = (i + 1) % len(POPULAR)
         save_state(st)
     return POPULAR[i]
+
+
+# ---------------------------------------------------- amac odakli basliklar
+
+# Her frekansin dogal amaci (arama kaliplari boyle)
+FREQ_PURPOSE = {
+    528: "healing", 432: "relax", 963: "meditation", 396: "release",
+    639: "relax", 7.83: "grounding", 174: "healing", 852: "meditation",
+    741: "focus", 417: "release", 285: "healing", 111: "meditation",
+    1111: "meditation", 136.1: "meditation", 10: "focus", 4: "sleep", 2: "sleep",
+}
+
+# amac -> (baslik kalibi, aciklama vurgusu, ek etiketler)
+PURPOSE_PACK = {
+    "sleep": ("Deep Sleep Music", "fall asleep fast and stay asleep",
+              ["sleep music", "deep sleep", "fall asleep fast", "insomnia relief"]),
+    "focus": ("Focus & Study Music", "deep concentration and productive work",
+              ["study music", "focus music", "concentration", "deep work"]),
+    "meditation": ("Meditation Music", "deep meditation and inner stillness",
+                   ["meditation music", "spiritual", "inner peace", "zen"]),
+    "healing": ("Healing Sleep Music", "deep healing and full body restoration",
+                ["healing frequency", "healing music", "body restoration"]),
+    "relax": ("Relaxing Music", "release stress and deeply unwind",
+              ["relaxing music", "stress relief", "calm music", "unwind"]),
+    "release": ("Letting Go Music", "release fear, guilt and negative energy",
+                ["let go", "release negativity", "emotional healing"]),
+    "grounding": ("Grounding Meditation", "reconnect with the earth and feel present",
+                  ["schumann resonance", "grounding", "earthing", "nature frequency"]),
+}
+
+
+def freq_title(hz, duration_label):
+    """Amac odakli frekans basligi + aciklama + etiketler."""
+    key = int(hz) if float(hz).is_integer() else hz
+    purpose = FREQ_PURPOSE.get(key, "relax")
+    pack_name, benefit, extra = PURPOSE_PACK[purpose]
+    name, meaning = name_for(hz)
+    hz_txt = format_hz(hz)
+
+    title = f"{hz_txt} Hz {pack_name} | {name} | {duration_label}"
+
+    if hz < 21:
+        how = (f"A {hz_txt} Hz binaural beat on a soft carrier tone - "
+               f"headphones are essential for the effect.")
+    else:
+        how = (f"A pure {hz_txt} Hz tone on a soft ambient bed, "
+               f"with a gentle binaural beat beneath. Headphones recommended.")
+
+    desc = (f"{hz_txt} Hz - {name}. {meaning}.\n\n"
+            f"Made to help you {benefit}.\n\n{how}\n\n"
+            f"{duration_label} of continuous, seamlessly looping sound. "
+            f"Play it while you sleep, meditate, study or rest.\n\n"
+            f"All audio is original and synthesised for this channel.\n\n"
+            f"Sound is not a treatment. If something hurts or worries you, "
+            f"please speak to a doctor.")
+
+    tags = ([f"{hz_txt}hz", f"{hz_txt} hz", name.lower(),
+             "binaural beats", "solfeggio"] + extra +
+            ["ambient", "1 hour", "sound healing"])[:15]
+    return title, desc, tags, purpose

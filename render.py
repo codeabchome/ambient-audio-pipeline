@@ -230,7 +230,20 @@ def main():
     print("== 2/5  gorsel hazirlaniyor")
     raw = out / "art.png"
     img = out / "bg.png"
-    art_meta = build_background(raw, int(hz * 1000) + seed % 1000, meta.get("purpose", "sleep"))
+    if meta.get("mix") == "recipe":
+        art_meta = build_background(raw, int(hz * 1000) + seed % 1000, "sleep")
+    else:
+        # frekans videolari: 5 motor sirayla doner - ardisik videolar farkli
+        st_v = sch.load_state()
+        engines = ["attractor", "waves", "flow", "rings", "grid"]
+        vi = st_v.get("vis_i", 0) % len(engines)
+        st_v["vis_i"] = vi + 1
+        sch.save_state(st_v)
+        import artgen as ag
+        eng = engines[vi]
+        img_e, art_meta = ag.generate_engine(eng, int(hz * 1000) + seed % 1000, 2560, 1440)
+        img_e.save(raw)
+        print(f"Gorsel motoru: {eng}")
 
     total_sec_tmp = int(a.hours * 3600)
     hrs = total_sec_tmp / 3600
@@ -238,16 +251,32 @@ def main():
                (f"{int(round(hrs))} Hours" if hrs >= 1 else
                 f"{int(round(total_sec_tmp/60))} Minutes"))
 
+    _photo_done = False
     if meta.get("mix") == "recipe" and _recipe:
-        head_txt, fname, fbenefit = _recipe["title"], "", _recipe["sub"]
-    else:
-        fname, fbenefit = sch.name_for(meta["carrier_hz"])
-        head_txt = f"{sch.format_hz(meta['carrier_hz'])} Hz"
+        import cover_photo
+        photo = out / "cover_photo.jpg"
+        if cover_photo.fetch_photo(_recipe["video"], seed + 3, photo):
+            try:
+                cover_photo.make_cinematic_cover(
+                    photo, _recipe["title"], _recipe["sub"], dur_lbl, img,
+                    seed=seed)
+                cover_img = Image.open(img)
+                _photo_done = True
+                print("Sinematik foto kapak hazir")
+            except Exception as e:
+                print("Foto kapak hatasi, tipografiye dusuluyor:", e)
+            photo.unlink(missing_ok=True)
 
-    cover_img = cover.add_text(
-        Image.open(raw), head_txt, fname, fbenefit, dur_lbl,
-        purpose=meta.get("purpose", "sleep"), channel="TONEBED")
-    cover_img.save(img)
+    if not _photo_done:
+        if meta.get("mix") == "recipe" and _recipe:
+            head_txt, fname, fbenefit = _recipe["title"], "", _recipe["sub"]
+        else:
+            fname, fbenefit = sch.name_for(meta["carrier_hz"])
+            head_txt = f"{sch.format_hz(meta['carrier_hz'])} Hz"
+        cover_img = cover.add_text(
+            Image.open(raw), head_txt, fname, fbenefit, dur_lbl,
+            purpose=meta.get("purpose", "sleep"), channel="TONEBED")
+        cover_img.save(img)
 
     thumb = out / "thumb.jpg"
     t = cover_img.copy()
@@ -280,8 +309,17 @@ def main():
 
     if not _use_clip:
         frames = MOTION_LOOP_SEC * FPS
-        zexpr = f"1.0+0.04*(0.5-0.5*cos(2*PI*on/{frames}))"
-        huexpr = f"26*sin(2*PI*t/{MOTION_LOOP_SEC})"
+        _eng = (art_meta or {}).get("engine", "attractor")
+        # motor -> hareket karakteri (zoom miktari, renk salinimi)
+        _mo = {
+            "attractor": (0.04, 26),   # yavas nefes + renk kaymasi
+            "waves":     (0.06, 14),   # dalgalanan yakinlasma
+            "flow":      (0.05, 30),   # akiskan renk gecisi
+            "rings":     (0.07, 10),   # nabiz gibi
+            "grid":      (0.03, 20),   # sakin suzulme
+        }.get(_eng, (0.04, 26))
+        zexpr = f"1.0+{_mo[0]}*(0.5-0.5*cos(2*PI*on/{frames}))"
+        huexpr = f"{_mo[1]}*sin(2*PI*t/{MOTION_LOOP_SEC})"
         run([
             "ffmpeg", "-y", "-loglevel", "error",
             "-loop", "1", "-framerate", str(FPS), "-t", str(MOTION_LOOP_SEC),
@@ -323,7 +361,8 @@ def main():
         desc = rcp.build_description(_recipe, dur2)
         tags = rcp.build_tags(_recipe)
     else:
-        title, desc, tags = build_titles(meta, total_sec)
+        title, desc, tags, _fpurpose = sch.freq_title(meta["carrier_hz"], dur2)
+        meta["freq_purpose"] = _fpurpose
     meta.update({"title": title, "description": desc, "tags": tags,
                  "art": art_meta, "duration_sec": total_sec,
                  "video": str(final), "thumbnail": str(thumb)})

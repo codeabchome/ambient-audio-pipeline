@@ -227,3 +227,128 @@ if __name__ == "__main__":
     img, meta = generate(a.seed, a.width, a.height, a.palette, a.symmetry)
     img.save(a.out)
     print(json.dumps(meta, indent=2))
+
+
+# ================================================================ yeni motorlar
+
+def _colorize(dens, palette, rng, shift=0.18):
+    """Yogunluk haritasini paletle boya (ortak yardimci)."""
+    dens = np.clip(dens, 0, 1)
+    hh, ww = dens.shape
+    yy = np.linspace(-1, 1, hh)[:, None]
+    xx = np.linspace(-1, 1, ww)[None, :]
+    radius = np.sqrt(xx ** 2 + yy ** 2) / 1.4142
+    pos = np.clip(dens * (1.0 - shift) + radius * shift, 0, 1)
+    ramp = _ramp(PALETTES[palette])
+    idx = np.clip((pos * (len(ramp) - 1)).astype(np.int32), 0, len(ramp) - 1)
+    rgb = ramp[idx] * np.clip(dens * 1.15, 0, 1)[:, :, None]
+    return Image.fromarray(rgb.astype(np.uint8), "RGB")
+
+
+def make_waves(seed, width=2560, height=1440, palette=None):
+    """Dalga alani: girisim yapan sinus dalgalari - su yuzeyi hissi."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+    xx /= width; yy /= height
+    f = np.zeros((height, width))
+    for _ in range(rng.integers(3, 6)):
+        ang = rng.uniform(0, np.pi)
+        freq = rng.uniform(4, 14)
+        ph = rng.uniform(0, 6.28)
+        f += np.sin(2*np.pi*freq*(xx*np.cos(ang)+yy*np.sin(ang)) + ph)
+    # radyal modulasyon: merkezden dalgalanma
+    r = np.sqrt((xx-0.5)**2 + (yy-0.5)**2)
+    f += 1.4*np.sin(2*np.pi*rng.uniform(5, 11)*r + rng.uniform(0, 6.28))
+    dens = (f - f.min()) / (f.max() - f.min())
+    dens = np.abs(np.sin(dens * np.pi * rng.uniform(1.2, 2.0))) ** 2.6
+    dens *= 0.75
+    img = _colorize(dens, palette, rng, 0.25)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(6)), 0.5)
+    return img, {"engine": "waves", "palette": palette}
+
+
+def make_flow(seed, width=2560, height=1440, palette=None):
+    """Akis cizgileri: vektor alaninda suzulen parcacik izleri."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    # alan: birkac sinus bileseni
+    a1, a2 = rng.uniform(0.8, 2.6, 2)
+    p1, p2 = rng.uniform(0, 6.28, 2)
+    n_part, steps = 5000, 220
+    x = rng.uniform(0, 1, n_part); y = rng.uniform(0, 1, n_part)
+    W2, H2 = width // 2, height // 2   # yari cozunurlukte biriktir (hiz)
+    dens = np.zeros((H2, W2), dtype=np.float32)
+    dt = 0.0022
+    for _ in range(steps):
+        ang = (np.sin(a1*2*np.pi*x + p1) + np.cos(a2*2*np.pi*y + p2)) * np.pi
+        x = (x + dt*np.cos(ang)) % 1.0
+        y = (y + dt*np.sin(ang)) % 1.0
+        ix = (x * (W2-1)).astype(np.int32); iy = (y * (H2-1)).astype(np.int32)
+        np.add.at(dens, (iy, ix), 1.0)
+    dens = np.log1p(dens); dens /= dens.max()
+    dens = np.asarray(Image.fromarray((dens*255).astype(np.uint8)).resize((width, height), Image.BILINEAR), dtype=np.float64)/255
+    dens = np.maximum(dens, dens[:, ::-1]) ** 0.8
+    img = _colorize(dens, palette, rng, 0.20)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(2)), 0.3)
+    return img, {"engine": "flow", "palette": palette}
+
+
+def make_rings(seed, width=2560, height=1440, palette=None):
+    """Halka desenleri: ic ice moduleli halkalar - ses dalgasi/nabiz hissi."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+    cx = width*rng.uniform(0.42, 0.58); cy = height*rng.uniform(0.42, 0.58)
+    r = np.sqrt((xx-cx)**2 + (yy-cy)**2) / (min(width, height)*0.55)
+    th = np.arctan2(yy-cy, xx-cx)
+    k = rng.integers(4, 9)                      # acisal simetri
+    wob = 0.06*np.sin(k*th + rng.uniform(0, 6.28))
+    rings = np.sin(2*np.pi*(r + wob)*rng.uniform(9, 16) + rng.uniform(0, 6.28))
+    dens = np.abs(rings) ** rng.uniform(1.8, 3.2)
+    dens *= np.exp(-r*1.35)                     # disari dogru soner
+    dens = np.clip(dens / dens.max(), 0, 1)
+    img = _colorize(dens, palette, rng, 0.15)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(4)), 0.4)
+    return img, {"engine": "rings", "palette": palette}
+
+
+def make_grid(seed, width=2560, height=1440, palette=None):
+    """Geometrik izgara: derinlikli cizgi aglari - minimal/teknolojik his."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    yy, xx = np.mgrid[0:height, 0:width].astype(np.float64)
+    xx = xx/width - 0.5; yy = yy/height - 0.5
+    # perspektif benzeri bukum
+    warp = rng.uniform(0.5, 1.4)
+    u = xx / (1.0 + warp*np.abs(yy))
+    v = yy / (1.0 + warp*np.abs(xx))
+    n1 = rng.integers(14, 26); n2 = rng.integers(14, 26)
+    g1 = np.abs(np.sin(np.pi*n1*u)) ** 14
+    g2 = np.abs(np.sin(np.pi*n2*v)) ** 14
+    dens = np.clip(g1 + g2, 0, 1)
+    # merkez parlama + kose sonumu
+    r = np.sqrt(xx**2 + yy**2)
+    dens = dens*np.exp(-r*1.1) + 0.25*np.exp(-r*4.0)
+    dens = np.clip(dens / dens.max(), 0, 1)
+    img = _colorize(dens, palette, rng, 0.22)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(2)), 0.3)
+    return img, {"engine": "grid", "palette": palette}
+
+
+ENGINES = {
+    "attractor": None,   # generate() mevcut motoru kullanir
+    "waves":     make_waves,
+    "flow":      make_flow,
+    "rings":     make_rings,
+    "grid":      make_grid,
+}
+
+
+def generate_engine(engine, seed, width=2560, height=1440, palette=None):
+    """Motor adina gore gorsel uret. attractor -> mevcut generate()."""
+    if engine == "attractor" or engine not in ENGINES:
+        img, meta = generate(seed, width, height, palette=palette)
+        meta["engine"] = "attractor"
+        return img, meta
+    return ENGINES[engine](seed, width, height, palette)
