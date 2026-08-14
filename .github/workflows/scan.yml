@@ -4,16 +4,26 @@ on:
   workflow_dispatch:
     inputs:
       category:
-        description: 'rain / ocean / stream / forest / wind / fire / night / thunder'
+        description: 'rain / ocean / stream / birds / forest / wind / fire / thunder / snow'
         default: 'rain'
       count:
         description: 'kac aday'
         default: '6'
+      commit:
+        description: 'onaylilari dogrudan approved/ altina yaz (true/false)'
+        default: 'true'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: library-scan
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -39,3 +49,31 @@ jobs:
           name: adaylar-${{ github.event.inputs.category }}
           path: candidates/
           retention-days: 7
+
+      - name: Onaylilari approved/ altina yaz
+        if: ${{ github.event.inputs.commit != 'false' }}
+        run: |
+          CAT="${{ github.event.inputs.category }}"
+          SRC="candidates/$CAT"
+          DST="approved/$CAT"
+
+          if [ ! -d "$SRC" ] || [ -z "$(ls -A $SRC/*.wav 2>/dev/null)" ]; then
+            echo "Aday yok, atlaniyor."
+            exit 0
+          fi
+
+          mkdir -p "$DST"
+          for f in "$SRC"/*.wav; do
+            base=$(basename "${f%.wav}")
+            ffmpeg -y -loglevel error -i "$f" -c:a flac -compression_level 8 "$DST/$base.flac"
+          done
+
+          ls -lh "$DST"
+          echo "--- toplam ---"
+          du -sh approved/
+
+          git config user.name  "tonebed-bot"
+          git config user.email "actions@github.com"
+          git add approved/
+          git diff --staged --quiet || git commit -m "kutuphane: $CAT kayitlari eklendi [skip ci]"
+          git push
