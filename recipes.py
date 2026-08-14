@@ -24,15 +24,6 @@ Kalite kurallari:
 RECIPES = [
     # ---------------- YAGMUR AILESI ----------------
     {
-        "id": "rain_piano",
-        "layers": [("rain", 1.00)],
-        "piano": True,
-        "video": "rain_window",
-        "title": "Rain & Soft Piano",
-        "sub": "Relaxing Music for Sleep, Study & Calm",
-        "tags": ["rain and piano", "piano rain sleep", "relaxing piano rain"],
-    },
-    {
         "id": "rain_pure",
         "layers": [("rain", 1.00)],
         "piano": False,
@@ -50,26 +41,8 @@ RECIPES = [
         "sub": "Deep Sleep & Stormy Night Ambience",
         "tags": ["thunderstorm sounds", "rain and thunder", "storm for sleeping"],
     },
-    {
-        "id": "rain_thunder_piano",
-        "layers": [("rain", 0.85), ("thunder", 0.45)],
-        "piano": True,
-        "video": "rain_storm",
-        "title": "Rain, Thunder & Melancholy Piano",
-        "sub": "Emotional Music for Sleep & Deep Rest",
-        "tags": ["sad piano rain", "thunderstorm piano", "melancholy piano"],
-    },
 
     # ---------------- SOMINE AILESI ----------------
-    {
-        "id": "fire_piano",
-        "layers": [("fire", 1.00)],
-        "piano": True,
-        "video": "fireplace",
-        "title": "Fireplace & Warm Piano",
-        "sub": "Cozy Music for Winter Nights",
-        "tags": ["fireplace piano", "cozy piano", "winter piano music"],
-    },
     {
         "id": "fire_pure",
         "layers": [("fire", 1.00)],
@@ -88,26 +61,8 @@ RECIPES = [
         "sub": "Cozy Ambience for Deep Sleep",
         "tags": ["fireplace and rain", "cozy cabin sounds", "rain fireplace"],
     },
-    {
-        "id": "fire_rain_piano",
-        "layers": [("fire", 0.80), ("rain", 0.62)],
-        "piano": True,
-        "video": "fireplace_window",
-        "title": "Fireplace, Rain & Gentle Piano",
-        "sub": "Warm Music for Rest & Reading",
-        "tags": ["cozy piano fireplace", "rain fire piano", "reading music"],
-    },
 
     # ---------------- SU / OKYANUS ----------------
-    {
-        "id": "ocean_piano",
-        "layers": [("ocean", 1.00)],
-        "piano": True,
-        "video": "ocean",
-        "title": "Ocean Waves & Calm Piano",
-        "sub": "Peaceful Music for Sleep & Meditation",
-        "tags": ["ocean piano", "sea waves music", "beach relaxing music"],
-    },
     {
         "id": "ocean_pure",
         "layers": [("ocean", 1.00)],
@@ -117,26 +72,8 @@ RECIPES = [
         "sub": "Calming Sea Sounds for Deep Sleep",
         "tags": ["ocean sounds", "waves for sleeping", "sea ambience"],
     },
-    {
-        "id": "stream_piano",
-        "layers": [("stream", 1.00)],
-        "piano": True,
-        "video": "stream",
-        "title": "Forest Stream & Soft Piano",
-        "sub": "Gentle Music for Focus & Calm",
-        "tags": ["water piano", "stream music", "nature piano"],
-    },
 
     # ---------------- ORMAN / KUS ----------------
-    {
-        "id": "birds_piano",
-        "layers": [("birds", 0.95)],
-        "piano": True,
-        "video": "forest_morning",
-        "title": "Morning Birdsong & Piano",
-        "sub": "Peaceful Music to Start the Day",
-        "tags": ["birdsong piano", "morning music", "spring ambience"],
-    },
     {
         "id": "birds_stream",
         "layers": [("birds", 0.85), ("stream", 0.75)],
@@ -146,26 +83,8 @@ RECIPES = [
         "sub": "Nature Sounds for Calm & Focus",
         "tags": ["forest sounds", "birds and water", "nature ambience"],
     },
-    {
-        "id": "forest_rain_piano",
-        "layers": [("rain", 0.80), ("birds", 0.45)],
-        "piano": True,
-        "video": "forest_rain",
-        "title": "Rain in the Forest & Piano",
-        "sub": "Spring Rain Music for Rest",
-        "tags": ["forest rain piano", "rain birds", "spring rain music"],
-    },
 
     # ---------------- RUZGAR / KIS ----------------
-    {
-        "id": "snow_piano",
-        "layers": [("snow", 0.95)],
-        "piano": True,
-        "video": "snow",
-        "title": "Falling Snow & Quiet Piano",
-        "sub": "Winter Music for Sleep & Reflection",
-        "tags": ["snow piano", "winter ambience", "christmas calm music"],
-    },
     {
         "id": "wind_pure",
         "layers": [("wind", 1.00)],
@@ -199,13 +118,11 @@ def available(recipe, approved_dir):
 
 def pick(kind, approved_dir, state):
     """
-    kind: "nature" (piyanosuz) veya "piano" (piyanolu)
+    kind: "nature" - saf doga tarifleri (muzik iceren tarif kalmadi)
     Kullanilabilir tarifler icinde SIRAYLA doner (tekrar etmesin).
     Doner: (recipe, yeni_state) - tarif yoksa (None, state)
     """
-    want_piano = (kind == "piano")
-    pool = [r for r in RECIPES
-            if r["piano"] == want_piano and available(r, approved_dir)]
+    pool = [r for r in RECIPES if available(r, approved_dir)]
     if not pool:
         return None, state
 
@@ -221,8 +138,7 @@ def build_title(recipe, duration_label):
 
 def build_description(recipe, duration_label):
     layers = ", ".join(c for c, _ in recipe["layers"])
-    music = ("with an original, gently played piano piece"
-             if recipe["piano"] else "with no music and no talking")
+    music = "with no music and no talking"
     return (
         f"{recipe['title']} — {recipe['sub'].lower()}.\n\n"
         f"{duration_label} of continuous, seamlessly looping ambience "

@@ -174,7 +174,9 @@ def main():
     ap.add_argument("--texture", default=None)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--nature", action="store_true", help="saf doga sesi videosu")
-    ap.add_argument("--piano", action="store_true", help="doga + duygusal piyano")
+    ap.add_argument("--music", default=None,
+                    choices=["deep_work", "sleep", "meditation"],
+                    help="ambient muzik videosu (piyanosuz besteci)")
     a = ap.parse_args()
 
     seed = a.seed if a.seed is not None else random.randrange(1, 10**9)
@@ -197,9 +199,25 @@ def main():
     import mixer, recipes as rcp
     _rng = __import__("numpy").random.default_rng(seed)
 
-    kind = "piano" if a.piano else ("nature" if a.nature else None)
     meta = None
-    if kind:
+    _music_genre = None
+    if a.music:
+        import composer
+        _music_genre = a.music
+        print(f"Muzik turu: {_music_genre}")
+        mwav = out / "music_src.wav"
+        composer.render_music(_music_genre, AUDIO_LOOP_SEC / 60 + 0.3, seed, mwav)
+        import mixer as _mx2
+        stereo, _sr = _mx2.read_wav(mwav)
+        stereo = _mx2.seamless(stereo.astype(__import__("numpy").float32), 8.0)
+        meta = {"mix": "music", "genre": _music_genre,
+                "carrier_hz": 0, "played_hz": 0, "beat_hz": 0,
+                "purpose": _music_genre, "loop_seconds": AUDIO_LOOP_SEC,
+                "seed": seed, "engine": "composer-v1"}
+        mwav.unlink(missing_ok=True)
+
+    kind = "nature" if a.nature else None
+    if meta is None and kind:
         st = sch.load_state()
         recipe, st = rcp.pick(kind, "approved", st)
         if recipe:
@@ -252,7 +270,22 @@ def main():
                 f"{int(round(total_sec_tmp/60))} Minutes"))
 
     _photo_done = False
-    if meta.get("mix") == "recipe" and _recipe:
+    if meta.get("mix") == "music":
+        import cover_photo, composer
+        _t, _d, _tg, _scene = composer.music_title(meta["genre"], dur_lbl)
+        photo = out / "cover_photo.jpg"
+        if cover_photo.fetch_photo(_scene, seed + 3, photo):
+            try:
+                pk = composer.MUSIC_PACK[meta["genre"]]
+                cover_photo.make_cinematic_cover(
+                    photo, pk["title"], pk["sub"], dur_lbl, img, seed=seed)
+                cover_img = Image.open(img)
+                _photo_done = True
+                print("Sinematik muzik kapagi hazir")
+            except Exception as e:
+                print("Muzik kapak hatasi:", e)
+            photo.unlink(missing_ok=True)
+    if not _photo_done and meta.get("mix") == "recipe" and _recipe:
         import cover_photo
         photo = out / "cover_photo.jpg"
         if cover_photo.fetch_photo(_recipe["video"], seed + 3, photo):
@@ -293,10 +326,12 @@ def main():
     total_sec = int(a.hours * 3600)
     _use_clip = False
 
-    if meta.get("mix") == "recipe":
+    if meta.get("mix") in ("recipe", "music"):
         import video_bg
         clip = out / "clip.mp4"
-        if video_bg.fetch_clip(meta["video_key"], seed, clip):
+        _vkey = meta.get("video_key") or {"deep_work": "wind", "sleep": "snow",
+                                          "meditation": "ocean"}[meta["genre"]]
+        if video_bg.fetch_clip(_vkey, seed, clip):
             try:
                 video_bg.build_motion_from_clip(clip, motion, WIDTH, HEIGHT, FPS)
                 seg = 28
@@ -356,7 +391,11 @@ def main():
             (f"{int(round(hours2))} Hours" if hours2 >= 1 else
              f"{int(round(total_sec/60))} Minutes"))
 
-    if meta.get("mix") == "recipe" and _recipe:
+    if meta.get("mix") == "music":
+        import composer
+        title, desc, tags, _scene = composer.music_title(meta["genre"], dur2)
+        meta["scene"] = _scene
+    elif meta.get("mix") == "recipe" and _recipe:
         title = rcp.build_title(_recipe, dur2)
         desc = rcp.build_description(_recipe, dur2)
         tags = rcp.build_tags(_recipe)
