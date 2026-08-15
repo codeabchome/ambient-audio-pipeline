@@ -58,7 +58,7 @@ def fetch_clip(category, seed, out_path):
 
     try:
         url = f"{API}?{urllib.parse.urlencode({'query': query, 'per_page': 15, 'orientation': 'landscape'})}"
-        req = urllib.request.Request(url, headers={"Authorization": key})
+        req = urllib.request.Request(url, headers={"Authorization": key, "User-Agent": "Mozilla/5.0 (tonebed-pipeline)"})
         with urllib.request.urlopen(req, timeout=60) as r:
             data = json.loads(r.read())
     except Exception as e:
