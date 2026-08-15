@@ -148,7 +148,7 @@ def add_text(img, hz, name_label, benefit_label, duration_label,
     y += 72 * s
 
     # frekans - ana odak
-    hz_text = f"{hz} Hz"
+    hz_text = str(hz)
     wid = d.textlength(hz_text, font=f_hz)
     d.text((cx - wid / 2, y), hz_text, font=f_hz, fill=white)
     y += 282 * s
@@ -160,11 +160,12 @@ def add_text(img, hz, name_label, benefit_label, duration_label,
 
     # amac
     # frekans adi - uzunluga gore kucult
-    nm = name_label.upper()
+    nm = name_label.upper() if name_label else ""
     fp = f_purpose
     while _tracked_width(d, nm, fp, 8 * s) > W * 0.86 and fp.size > int(40 * s):
         fp = _load(sub_f, fp.size - 4)
-    _tracked(d, (0, y), nm, fp, soft, tracking=8 * s, anchor_center_x=cx)
+    if nm:
+        _tracked(d, (0, y), nm, fp, soft, tracking=8 * s, anchor_center_x=cx)
     y += 108 * s
 
     # fayda + sure
