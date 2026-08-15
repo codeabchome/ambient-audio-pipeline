@@ -252,7 +252,7 @@ def encode_with_loudnorm(wav_in, m4a_out, total_sec, reps):
 
 # kategori secimi: amaca uygun dokular
 PURPOSE_CATEGORIES = {
-    "sleep":      ["rain", "ocean", "night", "thunder"],
+    "sleep":      ["rain", "ocean", "thunder", "wind"],
     "meditation": ["stream", "forest", "ocean", "wind"],
     "relax":      ["rain", "stream", "fire", "forest"],
     "focus":      ["rain", "stream", "wind"],

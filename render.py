@@ -17,7 +17,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-from PIL import Image
+from PIL import Image, ImageFilter
 from pathlib import Path
 
 import generate_audio as ga
@@ -30,6 +30,8 @@ WIDTH, HEIGHT = 1920, 1080
 FPS = 24
 MOTION_LOOP_SEC = 60          # render edilen tek segment
 AUDIO_LOOP_SEC = 600          # uretilen ses dongusu (10 dk)
+MUSIC_LOOP_SEC = 1800         # muzik dongusu (30 dk) - muzikte tekrar
+                              # fark edilir, o yuzden cok daha uzun uretilir
 
 # Gorsel temalari - amaca gore
 SCENE_PROMPTS = {
@@ -206,13 +208,13 @@ def main():
         _music_genre = a.music
         print(f"Muzik turu: {_music_genre}")
         mwav = out / "music_src.wav"
-        composer.render_music(_music_genre, AUDIO_LOOP_SEC / 60 + 0.3, seed, mwav)
+        composer.render_music(_music_genre, MUSIC_LOOP_SEC / 60 + 0.3, seed, mwav)
         import mixer as _mx2
         stereo, _sr = _mx2.read_wav(mwav)
         stereo = _mx2.seamless(stereo.astype(__import__("numpy").float32), 8.0)
         meta = {"mix": "music", "genre": _music_genre,
                 "carrier_hz": 0, "played_hz": 0, "beat_hz": 0,
-                "purpose": _music_genre, "loop_seconds": AUDIO_LOOP_SEC,
+                "purpose": _music_genre, "loop_seconds": MUSIC_LOOP_SEC,
                 "seed": seed, "engine": "composer-v1"}
         mwav.unlink(missing_ok=True)
 
@@ -253,7 +255,8 @@ def main():
     else:
         # frekans videolari: 5 motor sirayla doner - ardisik videolar farkli
         st_v = sch.load_state()
-        engines = ["attractor", "waves", "flow", "rings", "grid"]
+        engines = ["attractor", "waves", "spiral", "flow", "rings",
+                   "harmonograph", "grid"]
         vi = st_v.get("vis_i", 0) % len(engines)
         st_v["vis_i"] = vi + 1
         sch.save_state(st_v)
@@ -301,19 +304,32 @@ def main():
             photo.unlink(missing_ok=True)
 
     if not _photo_done:
-        if meta.get("mix") == "recipe" and _recipe:
-            head_txt, fname, fbenefit = _recipe["title"], "", _recipe["sub"]
+        if meta.get("mix") in ("recipe", "music"):
+            # Foto inmediyse: artgen gorseli uzerine sinematik tipografi.
+            # ASLA frekans kapagina dusme (yoksa "0 Hz" yazardi).
+            import cover_photo
+            if meta.get("mix") == "music":
+                import composer
+                pk = composer.MUSIC_PACK[meta["genre"]]
+                t_main, t_sub = pk["title"], pk["sub"]
+            else:
+                t_main, t_sub = _recipe["title"], _recipe["sub"]
+            cover_photo.make_cinematic_cover(raw, t_main, t_sub, dur_lbl,
+                                             img, seed=seed)
+            cover_img = Image.open(img)
         else:
             fname, fbenefit = sch.name_for(meta["carrier_hz"])
             head_txt = f"{sch.format_hz(meta['carrier_hz'])} Hz"
-        cover_img = cover.add_text(
-            Image.open(raw), head_txt, fname, fbenefit, dur_lbl,
-            purpose=meta.get("purpose", "sleep"), channel="TONEBED")
-        cover_img.save(img)
+            cover_img = cover.add_text(
+                Image.open(raw), head_txt, fname, fbenefit, dur_lbl,
+                purpose=meta.get("purpose", "sleep"), channel="TONEBED")
+            cover_img.save(img)
 
     thumb = out / "thumb.jpg"
     t = cover_img.copy()
     t.thumbnail((1280, 720), Image.LANCZOS)
+    # kucultme yazilari yumusatir - unsharp mask ile netligi geri getir
+    t = t.filter(ImageFilter.UnsharpMask(radius=2, percent=115, threshold=2))
     for q in (90, 85, 78, 70, 60):
         t.save(thumb, "JPEG", quality=q, optimize=True)
         if thumb.stat().st_size < 1_900_000:
@@ -352,6 +368,8 @@ def main():
             "flow":      (0.05, 30),   # akiskan renk gecisi
             "rings":     (0.07, 10),   # nabiz gibi
             "grid":      (0.03, 20),   # sakin suzulme
+            "spiral":       (0.05, 24),   # yavas donme hissi
+            "harmonograph": (0.04, 22),   # suzulen cizgiler
         }.get(_eng, (0.04, 26))
         zexpr = f"1.0+{_mo[0]}*(0.5-0.5*cos(2*PI*on/{frames}))"
         huexpr = f"{_mo[1]}*sin(2*PI*t/{MOTION_LOOP_SEC})"
@@ -371,7 +389,8 @@ def main():
 
     # 4) ses hedef sureye
     print("== 4/5  ses hedef sureye uzatiliyor")
-    audio_reps = max(1, -(-total_sec // AUDIO_LOOP_SEC)) - 1
+    loop_len = meta.get("loop_seconds", AUDIO_LOOP_SEC)
+    audio_reps = max(1, -(-total_sec // loop_len)) - 1
     m4a = out / "audio.m4a"
     mixer.encode_with_loudnorm(wav, m4a, total_sec, audio_reps)
 

@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-Cok enstrumanli, TUR SABLONLU besteci.
+Cok enstrumanli, TUR SABLONLU besteci.  PIYANO YOK.
 
 Ilke: "ne kadar cok enstruman o kadar iyi" DEGIL - her tur, o turde
 gercekte kullanilan enstrumanlarla ve o turun kurallarina gore uretilir.
 Sablonlar kati: Deep Work motoru duygusal melodi atmaz, Sleep hizlanmaz.
 
-Turler:
-  deep_work  - minimal piyano + cok hafif pad; tekrarlayan sakin motifler,
-               dar dinamik (dikkat dagitmaz)
-  sleep      - cok yavas seyrek piyano + legato yayli halilar; derin reverb
-  meditation - pad drone + nadir piyano dokunuslari; neredeyse zamansiz
-  emotional  - mevcut melankolik solo piyano (piano.py motoru)
+Turler (hepsi piyanosuz - bu turlerin tipik enstrumanlari):
+  deep_work  - yumusak yayli motif + sicak/new-age pad hali;
+               tekrarlayan sakin motifler, dar dinamik (dikkat dagitmaz)
+  sleep      - legato yavas yaylilar + sicak/yayli pad halilar; derin reverb
+  meditation - pad drone + koro nefesi + nadir yayli dokunuslar; zamansiz
 
-Ses: FluidSynth + FluidR3 (gercek ornekler). Kanal bazli program:
-  ch0 = piyano(0), ch1 = yayli(48), ch2 = pad(89/92)
+Ses: FluidSynth + FluidR3 (gercek ornekler). Kanal duzeni:
+  ch1/ch4 = uzun tutan sesler (yayli/koro - almasik, nota cakismaz)
+  ch2/ch3 = pad halilar (almasik)
+Programlar tur + seed'e gore secilir (asagida GENRE_INSTRUMENTS).
 """
 
 import random
@@ -42,21 +43,46 @@ def _nearest_scale(semi):
 
 # ---------------------------------------------------------------- MIDI (coklu kanal)
 
-def write_midi_multi(events, path):
+# GM programlar (0-indexli, FluidR3):
+#   48/49 yayli toplulugu (49 daha yumusak)   52 koro "aah"
+#   88 Pad New Age   89 Pad Warm   91 Pad Choir   92 Pad Bowed   94 Pad Halo
+GENRE_INSTRUMENTS = {
+    #             uzun sesler (ch1/ch4)   pad hali (ch2/ch3)
+    "deep_work":  {"long": [49, 88],      "pad": [89, 88]},
+    "sleep":      {"long": [49, 52],      "pad": [89, 92]},
+    "meditation": {"long": [52, 49],      "pad": [88, 94]},
+}
+
+DEFAULT_PROGRAMS = {1: 49, 4: 49, 2: 89, 3: 89}
+
+
+def pick_programs(genre, seed):
+    """Tur setinden seed'e gore enstruman sec - videolar arasi renk degisir."""
+    rng = random.Random(seed + 5)
+    ins = GENRE_INSTRUMENTS.get(genre)
+    if not ins:
+        return dict(DEFAULT_PROGRAMS)
+    long_p = rng.choice(ins["long"])
+    pad_p = rng.choice(ins["pad"])
+    return {1: long_p, 4: long_p, 2: pad_p, 3: pad_p}
+
+
+def write_midi_multi(events, path, programs=None):
     """
     events: (start_s, dur_s, midi, vel, ch) listesi.
-    ch: 0 piyano, 1 yayli, 2 pad.  midi=-1/-2 pedal off/on (ch'e uygulanir).
+    ch1/ch4 uzun sesler, ch2/ch3 pad.  midi=-1/-2 pedal off/on (ch'e uygulanir).
+    programs: {ch: GM program} - verilmezse DEFAULT_PROGRAMS.
     """
     TPQ = 1000
     msgs = []
-    # program atamalari
-    for ch, prog in ((0, 0), (1, 48), (2, 89), (3, 89), (4, 48)):
-        msgs.append((0, 0xC0 | ch, prog, None))
+    progs = programs or DEFAULT_PROGRAMS
+    for ch in (1, 2, 3, 4):
+        msgs.append((0, 0xC0 | ch, progs.get(ch, 89), None))
         # kanal ses seviyesi (CC7)
-        vol = {0: 100, 1: 88, 2: 80, 3: 80, 4: 88}[ch]
+        vol = {1: 88, 2: 80, 3: 80, 4: 88}[ch]
         msgs.append((0, 0xB0 | ch, 7, vol))
-        # hafif genislik: pan (CC10) - piyano orta, yayli sol, pad sag
-        pan = {0: 64, 1: 46, 2: 82, 3: 82, 4: 46}[ch]
+        # hafif genislik: pan (CC10) - uzun sesler sol, pad sag
+        pan = {1: 46, 2: 82, 3: 82, 4: 46}[ch]
         msgs.append((0, 0xB0 | ch, 10, pan))
 
     for start, dur, midi, vel, ch in events:
@@ -234,7 +260,9 @@ def render_music(genre, minutes, seed, out_wav):
     ev, g = GENRES[genre](minutes, seed)
     mid = Path("/tmp/music.mid")
     dry = Path("/tmp/music_dry.wav")
-    write_midi_multi(ev, mid)
+    progs = pick_programs(g, seed)
+    print(f"Enstrumanlar: uzun={progs[1]} pad={progs[2]} (GM program)")
+    write_midi_multi(ev, mid, programs=progs)
 
     subprocess.run(
         ["fluidsynth", "-ni", "-g", "0.7", "-F", str(dry),

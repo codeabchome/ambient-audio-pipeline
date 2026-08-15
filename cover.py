@@ -128,50 +128,62 @@ def add_text(img, hz, name_label, benefit_label, duration_label,
 
     s = H / 1440.0  # olcek
 
-    f_channel = _load(sub_f,  int(38 * s))
+    f_channel = _load(sub_f,  int(42 * s))
     f_hz      = _load(main_f, int(275 * s))
-    f_purpose = _load(sub_f,  int(82 * s))
-    f_detail  = _load(sub_f,  int(50 * s))
+    f_purpose = _load(sub_f,  int(108 * s))
+    f_detail  = _load(sub_f,  int(62 * s))
 
     cx = W / 2
     white = (255, 255, 255, 255)
     soft = (232, 236, 245, 235)
     dim = (198, 208, 224, 210)
 
+    # DIKKAT CEKICI vurgu: buyuk Hz sayisi amaca gore renklenir.
+    # Kucuk onizlemede (320px) renkli sayi, beyaz yazidan cok daha
+    # fazla goze carpar - tiklanma oranini dogrudan etkiler.
+    ACCENT = {
+        "sleep":      (140, 190, 255, 255),   # buz mavisi - gece hissi
+        "meditation": (200, 170, 255, 255),   # eflatun - spiritüel
+        "relax":      (130, 230, 200, 255),   # su yesili - ferahlik
+        "focus":      (255, 205, 110, 255),   # sicak altin - enerji
+        "study":      (255, 205, 110, 255),
+    }
+    accent = ACCENT.get(purpose, white)
+
     # dikey yerlesim
-    total_h = 390 * s
+    total_h = 620 * s
     y = H / 2 - total_h / 2 - 40 * s
 
     # kanal adi
     _tracked(d, (0, y), channel, f_channel, dim,
              tracking=10 * s, anchor_center_x=cx)
-    y += 72 * s
+    y += 76 * s
 
-    # frekans - ana odak
+    # frekans - ana odak (vurgu renginde)
     hz_text = str(hz)
     wid = d.textlength(hz_text, font=f_hz)
-    d.text((cx - wid / 2, y), hz_text, font=f_hz, fill=white)
-    y += 282 * s
+    d.text((cx - wid / 2, y), hz_text, font=f_hz, fill=accent)
+    y += 368 * s
 
     # ince ayirici cizgi
     lw = 190 * s
     d.line([(cx - lw, y), (cx + lw, y)], fill=(255, 255, 255, 90), width=max(1, int(2 * s)))
-    y += 30 * s
+    y += 46 * s
 
     # amac
     # frekans adi - uzunluga gore kucult
     nm = name_label.upper() if name_label else ""
     fp = f_purpose
-    while _tracked_width(d, nm, fp, 8 * s) > W * 0.86 and fp.size > int(40 * s):
+    while _tracked_width(d, nm, fp, 8 * s) > W * 0.86 and fp.size > int(52 * s):
         fp = _load(sub_f, fp.size - 4)
     if nm:
         _tracked(d, (0, y), nm, fp, soft, tracking=8 * s, anchor_center_x=cx)
-    y += 108 * s
+    y += 138 * s
 
     # fayda + sure
     detail = f"{benefit_label}  ·  {duration_label}"
     fd = f_detail
-    while _tracked_width(d, detail, fd, 4 * s) > W * 0.88 and fd.size > int(26 * s):
+    while _tracked_width(d, detail, fd, 4 * s) > W * 0.88 and fd.size > int(34 * s):
         fd = _load(sub_f, fd.size - 3)
     _tracked(d, (0, y), detail, fd, dim, tracking=4 * s, anchor_center_x=cx)
 

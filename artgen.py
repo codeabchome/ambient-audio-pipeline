@@ -336,12 +336,93 @@ def make_grid(seed, width=2560, height=1440, palette=None):
     return img, {"engine": "grid", "palette": palette}
 
 
+def make_spiral(seed, width=2560, height=1440, palette=None):
+    """Cok kollu galaksi sarmali: parlak cekirdek + sacilan yildiz kollari."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    W2, H2 = width // 2, height // 2
+
+    arms = int(rng.integers(2, 6))
+    turns = rng.uniform(1.1, 2.3)
+    spin = rng.choice([-1.0, 1.0])
+    n_arm = 60_000
+
+    xs, ys, ws = [], [], []
+    for a_i in range(arms):
+        t = rng.uniform(0, 1, n_arm) ** 0.72
+        base = a_i * 2 * np.pi / arms + spin * turns * 2 * np.pi * t
+        # kol genisligi disari dogru acilir
+        th = base + rng.normal(0, 0.05 + 0.16 * t, n_arm)
+        r = t * (1.0 + rng.normal(0, 0.03, n_arm))
+        xs.append(r * np.cos(th))
+        ys.append(r * np.sin(th))
+        ws.append((1.15 - t) ** 1.3 + 0.15)   # ic kisim parlak
+
+    # merkez cekirdek (yogun parlak top)
+    n_core = 25_000
+    rc = np.abs(rng.normal(0, 0.06, n_core))
+    tc = rng.uniform(0, 2 * np.pi, n_core)
+    xs.append(rc * np.cos(tc)); ys.append(rc * np.sin(tc))
+    ws.append(np.full(n_core, 1.35))
+
+    x = np.concatenate(xs); y = np.concatenate(ys)
+    w = np.concatenate(ws).astype(np.float32)
+
+    dens = np.zeros((H2, W2), dtype=np.float32)
+    scale = 0.46 * H2
+    ix = np.clip((W2 / 2 + x * scale).astype(np.int32), 0, W2 - 1)
+    iy = np.clip((H2 / 2 + y * scale).astype(np.int32), 0, H2 - 1)
+    np.add.at(dens, (iy, ix), w)
+    dens = np.log1p(dens); dens /= dens.max()
+
+    dimg = Image.fromarray((dens * 255).astype(np.uint8))
+    dimg = dimg.filter(ImageFilter.GaussianBlur(1.1))
+    dens = np.asarray(dimg.resize((width, height), Image.BILINEAR),
+                      dtype=np.float64) / 255
+    dens = np.clip(dens * 1.45, 0, 1) ** 0.80
+    img = _colorize(dens, palette, rng, 0.14)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(4)), 0.32)
+    return img, {"engine": "spiral", "palette": palette,
+                 "arms": arms, "turns": round(float(turns), 2)}
+
+
+def make_harmonograph(seed, width=2560, height=1440, palette=None):
+    """Harmonograf: sonen sarkac egrileri - zarif, ipeksi cizgi aglari."""
+    rng = np.random.default_rng(seed)
+    palette = palette or str(rng.choice(list(PALETTES.keys())))
+    W2, H2 = width // 2, height // 2
+    t = np.linspace(0, 90 * np.pi, 500_000)
+    f = rng.integers(2, 7, 4).astype(np.float64) + rng.uniform(-0.02, 0.02, 4)
+    p = rng.uniform(0, 2 * np.pi, 4)
+    dmp = rng.uniform(0.002, 0.007, 4)
+    x = (np.exp(-dmp[0] * t) * np.sin(f[0] * t + p[0]) +
+         np.exp(-dmp[1] * t) * np.sin(f[1] * t + p[1]))
+    y = (np.exp(-dmp[2] * t) * np.sin(f[2] * t + p[2]) +
+         np.exp(-dmp[3] * t) * np.cos(f[3] * t + p[3]))
+    dens = np.zeros((H2, W2), dtype=np.float32)
+    scale = 0.235 * H2
+    ix = np.clip((W2 / 2 + x * scale * 1.35).astype(np.int32), 0, W2 - 1)
+    iy = np.clip((H2 / 2 + y * scale).astype(np.int32), 0, H2 - 1)
+    np.add.at(dens, (iy, ix), 1.0)
+    dens = np.log1p(dens); dens /= dens.max()
+    dens = np.maximum(dens, dens[:, ::-1])          # ayna simetrisi
+    dens = np.asarray(Image.fromarray((dens * 255).astype(np.uint8))
+                      .resize((width, height), Image.BILINEAR),
+                      dtype=np.float64) / 255
+    dens = dens ** 0.78
+    img = _colorize(dens, palette, rng, 0.18)
+    img = Image.blend(img, img.filter(ImageFilter.GaussianBlur(2)), 0.30)
+    return img, {"engine": "harmonograph", "palette": palette}
+
+
 ENGINES = {
     "attractor": None,   # generate() mevcut motoru kullanir
     "waves":     make_waves,
     "flow":      make_flow,
     "rings":     make_rings,
     "grid":      make_grid,
+    "spiral":       make_spiral,
+    "harmonograph": make_harmonograph,
 }
 
 
