@@ -350,8 +350,6 @@ def main():
         if video_bg.fetch_clip(_vkey, seed, clip):
             try:
                 video_bg.build_motion_from_clip(clip, motion, WIDTH, HEIGHT, FPS)
-                seg = 28
-                video_reps = max(1, -(-total_sec // seg)) - 1
                 _use_clip = True
                 print("Gercek video arka plan (Pexels)")
             except Exception as e:
@@ -385,7 +383,6 @@ def main():
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "29",
             "-g", str(FPS * 4), "-an", str(motion),
         ])
-        video_reps = max(1, -(-total_sec // MOTION_LOOP_SEC)) - 1
 
     # 4) ses hedef sureye
     print("== 4/5  ses hedef sureye uzatiliyor")
@@ -399,7 +396,7 @@ def main():
     final = out / "video.mp4"
     run([
         "ffmpeg", "-y", "-loglevel", "error",
-        "-stream_loop", str(video_reps), "-i", str(motion),
+        "-stream_loop", "-1", "-i", str(motion),
         "-i", str(m4a),
         "-map", "0:v", "-map", "1:a", "-c", "copy",
         "-t", str(total_sec), "-movflags", "+faststart", str(final),

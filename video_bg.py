@@ -99,7 +99,7 @@ def build_motion_from_clip(clip_path, out_path, width=1920, height=1080, fps=24)
     # klibin ilk 14 sn'sini al, olcekle+kirp, yavaslat, bumerangla
     subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error",
-        "-i", str(clip_path), "-t", "14",
+        "-t", "14", "-i", str(clip_path),
         "-filter_complex",
         (f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
          f"crop={width}:{height},setpts=1.25*PTS,fps={fps},split[a][b];"
