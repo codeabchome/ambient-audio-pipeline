@@ -246,7 +246,17 @@ def main():
         import composer
         _np = __import__("numpy")
 
-        purpose = a.purpose or str(_rng.choice(["sleep","meditation","relax","focus","study"]))
+        # amac, frekansin kendi kimliginden gelir (4 Hz uyku frekansiysa
+        # yatak da uyku muzigi olur) - rastgele secim tur uyumsuzlugu yapiyordu
+        _nm, _bn = sch.name_for(plan["label_hz"])
+        _txt = (_nm + " " + _bn).lower()
+        if any(w in _txt for w in ("sleep", "delta", "theta", "rest", "insomnia", "relax")):
+            purpose = "sleep"
+        elif any(w in _txt for w in ("focus", "study", "clarity", "concentr", "alert", "memory")):
+            purpose = "study"
+        else:
+            purpose = "meditation"
+        purpose = a.purpose or purpose
         genre = {"focus": "deep_work", "study": "deep_work",
                  "sleep": "sleep"}.get(purpose, "meditation")
 
