@@ -138,13 +138,14 @@ def build_titles(meta, total_sec=3600):
 
     mode = meta.get("mode", "tone")
     if mode == "beat":
-        how = (f"A {hz_txt} Hz binaural beat. Two close tones are played, one in "
-               f"each ear, and the brain perceives the {hz_txt} Hz difference "
-               f"between them. Frequencies this low cannot be heard directly, "
-               f"so headphones are essential.")
+        how = (f"A {hz_txt} Hz binaural beat carried inside calm, original "
+               f"ambient music. Two close tones play, one in each ear, and the "
+               f"brain perceives the {hz_txt} Hz difference between them - "
+               f"headphones are essential for the effect.")
     else:
-        how = (f"A {hz_txt} Hz tone with a {meta['beat_hz']} Hz binaural beat "
-               f"beneath it, on a soft ambient bed. Headphones are recommended.")
+        how = (f"A {hz_txt} Hz tone woven into calm, original ambient music "
+               f"tuned to the same key, with a {meta['beat_hz']} Hz binaural "
+               f"beat beneath. Headphones are recommended.")
 
     desc = (
         f"{hz_txt} Hz — {name}.\n{benefit}.\n\n"
@@ -235,10 +236,64 @@ def main():
 
     if meta is None:
         _recipe = None
+        # FREKANS + MUZIK YATAGI:
+        #   Ton, composer'in urettigi ambient muzigin ICINDE calar.
+        #   Muzik, tasiyicinin nota karsiligina AKORTLANIR (key_root) ->
+        #   ton muzikle ayni tonalitede bir drone gibi oturur, falso olmaz.
+        #   Boylece "meditation/sleep" videolari gercekten muzik icerir;
+        #   2. dakikada "bu muzik degilmis" kacisi biter.
+        import math
+        import composer
+        _np = __import__("numpy")
+
         purpose = a.purpose or str(_rng.choice(["sleep","meditation","relax","focus","study"]))
-        stereo, meta = mixer.build_mix(
-            AUDIO_LOOP_SEC, carrier=plan["carrier"], beat=plan["beat"],
-            label_hz=plan["label_hz"], purpose=purpose, category=None, seed=seed)
+        genre = {"focus": "deep_work", "study": "deep_work",
+                 "sleep": "sleep"}.get(purpose, "meditation")
+
+        fold_f = ga.fold_carrier(plan["carrier"])
+        midi = int(round(69 + 12 * math.log2(fold_f / 440.0)))
+        key_root = 50 + ((midi - 50) % 12)      # bestecinin rahat oktavina tasi
+
+        print(f"Muzik yatagi: {genre}  akort: {fold_f:.1f} Hz -> MIDI {key_root}")
+        bwav = out / "freq_bed.wav"
+        composer.render_music(genre, MUSIC_LOOP_SEC / 60 + 0.3, seed + 3, bwav,
+                              key_root=key_root)
+        bed, _bsr = mixer.read_wav(bwav)
+        bwav.unlink(missing_ok=True)
+
+        n = int((MUSIC_LOOP_SEC + 8) * mixer.SR)
+        if bed.shape[1] < n:
+            bed = _np.tile(bed, (1, -(-n // bed.shape[1])))
+        bed = bed[:, :n].astype(_np.float32)
+
+        # ton katmani: katlanmis tasiyici belirgin, gercek frekans kisik,
+        # binaural fark iki kanal arasinda (generate_audio v2 mantigi)
+        t = _np.arange(n, dtype=_np.float64) / mixer.SR
+        beat = float(plan["beat"])
+        true_f = float(plan["carrier"])
+        lft = _np.sin(2 * _np.pi * (fold_f - beat / 2) * t)
+        rgt = _np.sin(2 * _np.pi * (fold_f + beat / 2) * t)
+        if abs(true_f - fold_f) > 0.1:
+            lvl = 0.22 / _np.log2(true_f / fold_f)
+            lft += lvl * _np.sin(2 * _np.pi * (true_f - beat / 2) * t)
+            rgt += lvl * _np.sin(2 * _np.pi * (true_f + beat / 2) * t)
+        del t
+        pk = max(float(_np.abs(lft).max()), float(_np.abs(rgt).max())) + 1e-9
+        TONE_LVL = 0.16                          # muzik onde, ton net ama nazik
+        stereo = _np.empty_like(bed)
+        stereo[0] = 0.80 * bed[0] + (TONE_LVL / pk) * lft.astype(_np.float32)
+        stereo[1] = 0.80 * bed[1] + (TONE_LVL / pk) * rgt.astype(_np.float32)
+        del bed, lft, rgt
+
+        stereo = mixer.seamless(stereo, 8.0)     # ton faz atlamasi da bu
+        pk2 = float(_np.abs(stereo).max()) + 1e-9  # gecise gomulur
+        stereo *= min(1.0, 0.92 / pk2)
+
+        meta = {"mix": "freq_music", "genre": genre,
+                "carrier_hz": plan["label_hz"], "played_hz": round(fold_f, 1),
+                "beat_hz": beat, "purpose": purpose, "texture": "music",
+                "loop_seconds": MUSIC_LOOP_SEC, "seed": seed,
+                "engine": "freq-music-v1", "key_root": key_root}
     meta["mode"] = plan["mode"]
     print(f"Miks: {meta.get('mix')}  kayit: {meta.get('recording','-')}")
     wav = out / "loop.wav"

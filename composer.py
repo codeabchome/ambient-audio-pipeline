@@ -117,7 +117,7 @@ def write_midi_multi(events, path, programs=None):
 
 # ---------------------------------------------------------------- tur sablonlari
 
-def compose_deep_work(minutes, seed):
+def compose_deep_work(minutes, seed, key_root=None):
     """
     Minimal, dongusel, dikkat dagitmayan.
     - Kisa motif (3-4 nota) SUREKLI tekrar, cok yavas evrim
@@ -125,7 +125,7 @@ def compose_deep_work(minutes, seed):
     - Pad cok kisik, tek akor uzun tutar
     """
     rng = random.Random(seed)
-    key = rng.choice([57, 55, 60, 62])
+    key = key_root if key_root else rng.choice([57, 55, 60, 62])
     tempo = rng.uniform(58, 68)
     beat = 60.0 / tempo
     ev = []
@@ -168,14 +168,14 @@ def compose_deep_work(minutes, seed):
     return ev, "deep_work"
 
 
-def compose_sleep(minutes, seed):
+def compose_sleep(minutes, seed, key_root=None):
     """
     Cok yavas, seyrek piyano + legato yayli halilar.
     - Yayli: uzun, ust uste binen akor tutuslari
     - Piyano: nadir, yumusak tek notalar / kucuk cifte
     """
     rng = random.Random(seed)
-    key = rng.choice([55, 57, 52])
+    key = key_root if key_root else rng.choice([55, 57, 52])
     tempo = rng.uniform(36, 44)
     beat = 60.0 / tempo
     ev = []
@@ -205,14 +205,14 @@ def compose_sleep(minutes, seed):
     return ev, "sleep"
 
 
-def compose_meditation(minutes, seed):
+def compose_meditation(minutes, seed, key_root=None):
     """
     Drone + nadir piyano dokunuslari. Neredeyse zamansiz.
     - Pad: tonik drone surekli, bes araliginda gidip gelen ikinci ses
     - Piyano: 15-30 sn'de bir tek yumusak nota
     """
     rng = random.Random(seed)
-    key = rng.choice([50, 52, 55, 57])
+    key = key_root if key_root else rng.choice([50, 52, 55, 57])
     ev = []
     total = minutes * 60
 
@@ -255,9 +255,9 @@ GENRES = {
 
 # ---------------------------------------------------------------- render
 
-def render_music(genre, minutes, seed, out_wav):
+def render_music(genre, minutes, seed, out_wav, key_root=None):
     """Tur sablonuyla bestele -> FluidSynth -> convolution reverb + EQ."""
-    ev, g = GENRES[genre](minutes, seed)
+    ev, g = GENRES[genre](minutes, seed, key_root)
     mid = Path("/tmp/music.mid")
     dry = Path("/tmp/music_dry.wav")
     progs = pick_programs(g, seed)
