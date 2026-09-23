@@ -290,5 +290,5 @@ def freq_title(hz, duration_label):
 
     tags = ([f"{hz_txt}hz", f"{hz_txt} hz", name.lower(),
              "binaural beats", "solfeggio"] + extra +
-            ["ambient", "1 hour", "sound healing"])[:15]
+            ["ambient", duration_label.lower(), "sound healing"])[:15]
     return title, desc, tags, purpose
