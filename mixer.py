@@ -246,7 +246,8 @@ def encode_with_loudnorm(wav_in, m4a_out, total_sec, reps):
         "-af", (f"loudnorm=I={TARGET_LUFS}:TP=-1.5:LRA=11,"
                 f"afade=t=in:st=0:d=2,"
                 f"afade=t=out:st={fade_out_start}:d=8"),
-        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", str(m4a_out),
+        "-c:a", "aac", "-b:a", "128k" if total_sec > 7200 else "192k",
+        "-ar", "44100", str(m4a_out),
     ], check=True)
 
 
