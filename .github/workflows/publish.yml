@@ -4,11 +4,13 @@ on:
   schedule:
     # Gunde 5 video. Hedef kitle: ABD (bu turde en buyuk izleyici +
     # en yuksek CPM). Saatler ET (US Eastern) gununu takip eder:
-    #   01:00 UTC = 20-21 ET aksam     -> DOGA    (uyku oncesi, en guclu slot)
-    #   05:00 UTC = 00-01 ET gece      -> FREKANS (uykusuzlar + Asya-Pasifik)
-    #   13:00 UTC = 08-09 ET sabah     -> MUZIK   (study/focus, tur doner)
-    #   18:00 UTC = 13-14 ET oglen     -> FREKANS (populer rotasyon)
-    #   22:00 UTC = 17-18 ET aksamustu -> DOGA    (is sonrasi rahatlama)
+    # Karar 24.09.2026: TUM slotlar FREKANS (kanali buyuten hat).
+    #   01:00 UTC = 20-21 ET aksam     -> FREKANS 8 SAAT (uyku slotu)
+    #   05:00 UTC = 00-01 ET gece      -> FREKANS 1 saat
+    #   13:00 UTC = 08-09 ET sabah     -> FREKANS 1 saat
+    #   18:00 UTC = 13-14 ET oglen     -> FREKANS 1 saat
+    #   22:00 UTC = 17-18 ET aksamustu -> FREKANS 1 saat
+    # Doga / muzik sadece elle (mode input) calisir.
     - cron: '0 1 * * *'
     - cron: '0 5 * * *'
     - cron: '0 13 * * *'
@@ -80,10 +82,7 @@ jobs:
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ] || [ "$MODE" = "auto" ]; then
             case "$H" in
-              1|22) MODE=nature ;;     # aksam + aksamustu: doga
-              5|18) MODE=frequency ;;  # gece + oglen: populer frekans
-              13)   MODE=music ;;      # sabah: calisma/odak muzigi
-              *)    MODE=frequency ;;
+              *)    MODE=frequency ;;  # tum slotlar frekans (24.09.2026)
             esac
           fi
           case "$MODE" in
