@@ -99,7 +99,7 @@ RECIPES = [
 
 ORTAK_TAGS = [
     "relaxing music", "sleep music", "study music", "ambience",
-    "1 hour", "no ads", "calm", "asmr",
+    "no ads", "calm", "asmr",
 ]
 
 
@@ -151,5 +151,6 @@ def build_description(recipe, duration_label):
     )
 
 
-def build_tags(recipe):
-    return (recipe["tags"] + [c for c, _ in recipe["layers"]] + ORTAK_TAGS)[:15]
+def build_tags(recipe, duration_label=None):
+    extra = [duration_label.lower()] if duration_label else []
+    return (recipe["tags"] + [c for c, _ in recipe["layers"]] + extra + ORTAK_TAGS)[:15]
