@@ -20,8 +20,8 @@ on:
         description: 'private / unlisted / public'
         default: 'private'
       hours:
-        description: 'video suresi (saat)'
-        default: '1'
+        description: 'video suresi (saat) - bos: 01 UTC slotu 8, digerleri 1'
+        default: ''
       carrier:
         description: 'belirli bir frekans (bos birakirsan siradaki gelir)'
         default: ''
@@ -41,7 +41,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 210
 
     steps:
       - uses: actions/checkout@v4
@@ -68,11 +68,17 @@ jobs:
           if [ -n "${{ github.event.inputs.carrier }}" ]; then
             EXTRA="$EXTRA --carrier ${{ github.event.inputs.carrier }}"
           fi
+          # Slot saati: cron gecikse bile tetikleyen cron satirindan okunur
+          # ('0 1 * * *' -> 1). Elle calistirmada saatten hesaplanir.
+          # DIKKAT: date +%H sifir dolgulu doner -> 10# ile onluga cevir.
+          SCHED="${{ github.event.schedule }}"
+          if [ -n "$SCHED" ]; then
+            H=$(echo "$SCHED" | awk '{print $2}')
+          else
+            H=$((10#$(date -u +%H)))
+          fi
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ] || [ "$MODE" = "auto" ]; then
-            # DIKKAT: date +%H sifir dolgulu doner ("01","13").
-            # 10# oneki ile onluk sayiya cevrilir, case guvenli calisir.
-            H=$((10#$(date -u +%H)))
             case "$H" in
               1|22) MODE=nature ;;     # aksam + aksamustu: doga
               5|18) MODE=frequency ;;  # gece + oglen: populer frekans
@@ -91,8 +97,13 @@ jobs:
                 2) EXTRA="$EXTRA --music meditation" ;;
               esac ;;
           esac
-          echo "MOD: $MODE"
-          python render.py --outdir out --hours ${{ github.event.inputs.hours || '1' }} $EXTRA
+          # SURE: 01 UTC = ABD aksami uyku slotu -> 8 saat, digerleri 1 saat
+          HOURS="${{ github.event.inputs.hours }}"
+          if [ -z "$HOURS" ]; then
+            if [ "$H" -eq 1 ]; then HOURS=8; else HOURS=1; fi
+          fi
+          echo "MOD: $MODE  SURE: ${HOURS}h"
+          python render.py --outdir out --hours "$HOURS" $EXTRA
 
       - name: Ozet
         run: |
