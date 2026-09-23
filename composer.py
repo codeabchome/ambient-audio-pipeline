@@ -350,6 +350,6 @@ def music_title(genre, duration_label):
             f"Play it while you work, study, meditate or rest.\n\n"
             f"Every piece on this channel is original — nothing is sampled "
             f"from other artists.")
-    tags = (pk["tags"] + ["1 hour", "no vocals", "ambient music",
+    tags = (pk["tags"] + [duration_label.lower(), "no vocals", "ambient music",
                           "relaxing music"])[:15]
     return title, desc, tags, pk["scene"]
