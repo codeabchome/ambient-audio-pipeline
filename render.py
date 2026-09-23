@@ -479,7 +479,7 @@ def main():
     elif meta.get("mix") == "recipe" and _recipe:
         title = rcp.build_title(_recipe, dur2)
         desc = rcp.build_description(_recipe, dur2)
-        tags = rcp.build_tags(_recipe)
+        tags = rcp.build_tags(_recipe, dur2)
     else:
         title, desc, tags, _fpurpose = sch.freq_title(meta["carrier_hz"], dur2)
         meta["freq_purpose"] = _fpurpose
