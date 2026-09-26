@@ -117,6 +117,7 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
+          PLAYLIST_ID: 'PLJEdmQp9UwFg'   # Cozy Pixel Nights (sadece doga videolari)
         run: python upload.py out/meta.json
 
       - name: Frekans sayacini kaydet
