@@ -145,8 +145,8 @@ def build_description(recipe, duration_label):
         f"({layers}) {music}.\n\n"
         f"Play it while you sleep, study, read, work or rest.\n\n"
         f"Field recordings are public domain (CC0). "
-        f"Piano is composed and rendered for this channel — every piece is "
-        f"different.\n\n"
+        f"The pixel-art scene is drawn in code for this channel — every "
+        f"video gets its own variation.\n\n"
         f"Headphones or speakers both work; keep the volume comfortable."
     )
 
