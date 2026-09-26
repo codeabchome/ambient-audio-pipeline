@@ -45,6 +45,26 @@ def get_service():
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
+def add_to_playlist(video_id, playlist_id):
+    """
+    playlistItems.insert 'youtube' kapsami ister. scopes=None: kapsam
+    daraltilmaz, token uretilirken verilen tum yetkiler kullanilir
+    (get_token.py 'youtube' kapsamini da istiyor).
+    """
+    creds = Credentials(
+        token=None,
+        refresh_token=os.environ["YT_REFRESH_TOKEN"],
+        client_id=os.environ["YT_CLIENT_ID"],
+        client_secret=os.environ["YT_CLIENT_SECRET"],
+        token_uri=TOKEN_URI,
+    )
+    yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
+    yt.playlistItems().insert(part="snippet", body={"snippet": {
+        "playlistId": playlist_id,
+        "resourceId": {"kind": "youtube#video", "videoId": video_id},
+    }}).execute()
+
+
 def upload(meta_path="out/meta.json", privacy="private"):
     meta = json.loads(Path(meta_path).read_text())
     video = meta["video"]
@@ -101,6 +121,16 @@ def upload(meta_path="out/meta.json", privacy="private"):
             except Exception as e:
                 # dogrulanmamis kanal / boyut / gecici hata - hepsi tolere edilir
                 print("Kapak yuklenemedi (video yuklendi, sorun degil):", e)
+
+    # oynatma listesi: sadece doga + piksel sahne videolari.
+    # BASARISIZ OLSA BILE is patlamasin, video zaten yuklendi.
+    pid = os.environ.get("PLAYLIST_ID", "").strip()
+    if pid and meta.get("mix") == "recipe":
+        try:
+            add_to_playlist(vid, pid)
+            print(f"Oynatma listesine eklendi: {pid}")
+        except Exception as e:
+            print("Oynatma listesine eklenemedi (video yuklendi, sorun degil):", e)
 
     return vid
 
