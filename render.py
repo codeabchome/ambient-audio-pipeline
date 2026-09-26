@@ -354,6 +354,23 @@ def main():
                 print("Muzik kapak hatasi:", e)
             photo.unlink(missing_ok=True)
     if not _photo_done and meta.get("mix") == "recipe" and _recipe:
+        # PIKSEL SAHNE: kapak = sahnenin ilk karesi (video ile birebir ayni)
+        import pixelscene
+        _scene = pixelscene.scene_for(_recipe["video"])
+        if _scene:
+            try:
+                sp = out / "scene_still.png"
+                pixelscene.still(_scene, sp, seed=seed)
+                import cover_photo
+                cover_photo.make_cinematic_cover(
+                    sp, _recipe["title"], _recipe["sub"], dur_lbl, img, seed=seed)
+                cover_img = Image.open(img)
+                _photo_done = True
+                sp.unlink(missing_ok=True)
+                print(f"Piksel sahne kapagi hazir: {_scene}")
+            except Exception as e:
+                print("Piksel kapak hatasi, fotografa dusuluyor:", e)
+    if not _photo_done and meta.get("mix") == "recipe" and _recipe:
         import cover_photo
         photo = out / "cover_photo.jpg"
         if cover_photo.fetch_photo(_recipe["video"], seed + 3, photo):
@@ -407,7 +424,18 @@ def main():
     total_sec = int(a.hours * 3600)
     _use_clip = False
 
-    if meta.get("mix") in ("recipe", "music"):
+    if meta.get("mix") == "recipe" and _recipe:
+        import pixelscene
+        _scene = pixelscene.scene_for(_recipe["video"])
+        if _scene:
+            try:
+                pixelscene.render(_scene, motion, seed=seed)
+                _use_clip = True
+                print(f"Piksel sahne dongusu: {_scene}")
+            except Exception as e:
+                print("Piksel sahne hatasi, eski yola dusuluyor:", e)
+
+    if not _use_clip and meta.get("mix") in ("recipe", "music"):
         import video_bg
         clip = out / "clip.mp4"
         _vkey = meta.get("video_key") or {"deep_work": "wind", "sleep": "snow",
